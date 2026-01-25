@@ -31,6 +31,7 @@ import { DecisionTraceManager, DecisionTrace, DecisionQueryResult } from './trac
 import { WorldModel, MetaNode, WorldState, AggregationResult } from './world/world-model.js';
 import { BehavioralValidator, ValidationReport, QualityScore } from './validation/behavioral-validator.js';
 import { AdaptiveMemory, FusionResult } from './adaptive/adaptive-memory.js';
+import { ContinualLearner } from './learning/continual-learner.js';
 
 /**
  * Gating decisions for intelligent routing
@@ -55,6 +56,7 @@ export class TitanMemory {
   private worldModel: WorldModel;
   private validator: BehavioralValidator;
   private adaptiveMemory: AdaptiveMemory;
+  private continualLearner: ContinualLearner;
 
   constructor(configPath?: string) {
     loadConfig(configPath);
@@ -78,6 +80,7 @@ export class TitanMemory {
     this.worldModel = new WorldModel();
     this.validator = new BehavioralValidator();
     this.adaptiveMemory = new AdaptiveMemory();
+    this.continualLearner = new ContinualLearner();
   }
 
   /**
@@ -98,6 +101,7 @@ export class TitanMemory {
       this.worldModel.initialize(),
       this.validator.initialize(),
       this.adaptiveMemory.initialize(),
+      this.continualLearner.initialize(),
     ]);
 
     this.initialized = true;
@@ -252,7 +256,7 @@ export class TitanMemory {
   }
 
   /**
-   * Phase 3: Process after storage (entity extraction, context linking)
+   * Phase 3: Process after storage (entity extraction, context linking, continual learning)
    */
   private async processPostStore(memory: MemoryEntry, content: string): Promise<void> {
     try {
@@ -273,6 +277,15 @@ export class TitanMemory {
 
       // Record memory activity
       await this.worldModel.recordMemoryActivity(memory.id);
+
+      // Process for continual learning
+      await this.continualLearner.processNewMemory(memory);
+
+      // Check for catastrophic forgetting
+      const forgettingRisk = await this.continualLearner.checkForgettingRisk();
+      if (forgettingRisk.alert) {
+        console.warn('Forgetting risk detected:', forgettingRisk.riskLevel, forgettingRisk.affectedPatterns.length, 'patterns affected');
+      }
     } catch (error) {
       // Non-critical, log and continue
       console.warn('Post-store processing error:', error);
@@ -595,6 +608,7 @@ export class TitanMemory {
       this.worldModel.close(),
       this.validator.close(),
       this.adaptiveMemory.close(),
+      this.continualLearner.close(),
     ]);
     this.initialized = false;
   }
@@ -889,6 +903,95 @@ export class TitanMemory {
     return this.adaptiveMemory.getStats();
   }
 
+  // --- Continual Learning ---
+
+  /**
+   * Get pattern lifecycle for a memory
+   */
+  async getPatternLifecycle(memoryId: string): Promise<import('./types.js').PatternLifecycle | undefined> {
+    if (!this.initialized) await this.initialize();
+    return this.continualLearner.findPatternByMemoryId(memoryId);
+  }
+
+  /**
+   * Check for catastrophic forgetting risk
+   */
+  async checkForgettingRisk(): Promise<import('./types.js').ForgettingRisk> {
+    if (!this.initialized) await this.initialize();
+    return this.continualLearner.checkForgettingRisk();
+  }
+
+  /**
+   * Execute scheduled rehearsals (spaced repetition)
+   */
+  async runRehearsalCycle(): Promise<Array<{ patternId: string; newInterval: number }>> {
+    if (!this.initialized) await this.initialize();
+    return this.continualLearner.executeRehearsals();
+  }
+
+  /**
+   * Get pending rehearsals
+   */
+  async getPendingRehearsals(): Promise<import('./types.js').RehearsalEntry[]> {
+    if (!this.initialized) await this.initialize();
+    return this.continualLearner.getPendingRehearsals();
+  }
+
+  /**
+   * Distill core insights from a pattern
+   */
+  async distillPattern(memoryId: string): Promise<string | undefined> {
+    if (!this.initialized) await this.initialize();
+    const pattern = this.continualLearner.findPatternByMemoryId(memoryId);
+    if (!pattern) return undefined;
+    return this.continualLearner.distillPattern(pattern);
+  }
+
+  /**
+   * Get plasticity index for a pattern
+   */
+  getPlasticityIndex(patternId: string): number {
+    return this.continualLearner.getPlasticityIndex(patternId);
+  }
+
+  /**
+   * Get stability index for a pattern
+   */
+  getStabilityIndex(patternId: string): number {
+    return this.continualLearner.getStabilityIndex(patternId);
+  }
+
+  /**
+   * Get all patterns by lifecycle stage
+   */
+  async getPatternsByStage(stage: import('./types.js').PatternStage): Promise<import('./types.js').PatternLifecycle[]> {
+    if (!this.initialized) await this.initialize();
+    return this.continualLearner.getPatternsByStage(stage);
+  }
+
+  /**
+   * Get learning statistics
+   */
+  async getLearningStats(): Promise<import('./types.js').LearningStats> {
+    if (!this.initialized) await this.initialize();
+    return this.continualLearner.getStats();
+  }
+
+  /**
+   * Get forgetting alerts history
+   */
+  async getForgettingAlerts(): Promise<import('./types.js').ForgettingRisk[]> {
+    if (!this.initialized) await this.initialize();
+    return this.continualLearner.getForgettingAlerts();
+  }
+
+  /**
+   * Update domain learning rate based on success/failure feedback
+   */
+  updateDomainLearningRate(domain: string, success: boolean): void {
+    this.continualLearner.updateDomainLearningRate(domain, success);
+  }
+
   // --- Combined Phase 3 Stats ---
 
   /**
@@ -900,18 +1003,20 @@ export class TitanMemory {
     world: Awaited<ReturnType<WorldModel['getStats']>>;
     validation: Awaited<ReturnType<BehavioralValidator['getStats']>>;
     adaptive: Awaited<ReturnType<AdaptiveMemory['getStats']>>;
+    learning: Awaited<ReturnType<ContinualLearner['getStats']>>;
   }> {
     if (!this.initialized) await this.initialize();
 
-    const [graph, decisions, world, validation, adaptive] = await Promise.all([
+    const [graph, decisions, world, validation, adaptive, learning] = await Promise.all([
       this.knowledgeGraph.getStats(),
       this.decisionTracer.getStats(),
       this.worldModel.getStats(),
       this.validator.getStats(),
       this.adaptiveMemory.getStats(),
+      this.continualLearner.getStats(),
     ]);
 
-    return { graph, decisions, world, validation, adaptive };
+    return { graph, decisions, world, validation, adaptive, learning };
   }
 }
 

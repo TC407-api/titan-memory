@@ -185,3 +185,98 @@ export interface ExportFormat {
   stats: MemoryStats;
   memories: MemoryEntry[];
 }
+
+// ==================== Continual Learning Types ====================
+
+/**
+ * Pattern lifecycle stages (Hope/Nested Learning inspired)
+ * Patterns progress through stages as they mature
+ */
+export type PatternStage = 'immature' | 'developing' | 'mature' | 'stable' | 'archived';
+
+/**
+ * Update record for tracking pattern changes
+ */
+export interface UpdateRecord {
+  timestamp: Date;
+  changeType: 'create' | 'update' | 'reinforce' | 'decay' | 'distill';
+  previousContent?: string;
+  newContent: string;
+  divergenceScore?: number;
+}
+
+/**
+ * Pattern lifecycle tracking
+ * Tracks maturity, plasticity, and stability of learned patterns
+ */
+export interface PatternLifecycle {
+  id: string;
+  memoryId: string;
+  stage: PatternStage;
+  createdAt: Date;
+  maturityScore: number;        // 0-1, based on age + access + consistency
+  plasticityIndex: number;      // How easily this pattern can change
+  stabilityIndex: number;       // How resistant to forgetting
+  updateHistory: UpdateRecord[];
+  distilledContent?: string;    // Core insights extracted
+  lastRehearsed?: Date;         // For spaced repetition
+  rehearsalCount: number;
+  snapshotContent: string;      // For catastrophic forgetting detection
+  snapshotDate: Date;
+  domain?: string;              // Domain for adaptive learning rates
+}
+
+/**
+ * Forgetting risk assessment
+ */
+export interface ForgettingRisk {
+  alert: boolean;
+  riskLevel: 'none' | 'low' | 'medium' | 'high' | 'critical';
+  affectedPatterns: Array<{
+    patternId: string;
+    divergence: number;
+    description: string;
+  }>;
+  timestamp: Date;
+}
+
+/**
+ * Rehearsal schedule entry
+ */
+export interface RehearsalEntry {
+  patternId: string;
+  scheduledFor: Date;
+  interval: number;             // Current interval in days
+  easeFactor: number;           // SM-2 ease factor
+  lastReview?: Date;
+  reviewCount: number;
+}
+
+/**
+ * Learning statistics
+ */
+export interface LearningStats {
+  totalPatterns: number;
+  byStage: Record<PatternStage, number>;
+  avgPlasticity: number;
+  avgStability: number;
+  forgettingAlerts: number;
+  rehearsalsPending: number;
+  distillationsPerformed: number;
+  crossTransfers: number;
+}
+
+/**
+ * Continual learner configuration
+ */
+export interface ContinualLearnerConfig {
+  plasticityDecay: number;           // How fast patterns become less plastic (default: 0.05/day)
+  stabilityThreshold: number;        // When to protect from updates (default: 0.8)
+  forgettingAlertThreshold: number;  // Divergence to trigger alert (default: 0.4)
+  rehearsalIntervals: number[];      // Spaced repetition schedule in days (default: [1, 3, 7, 14, 30, 90])
+  distillationThreshold: number;     // Update count to trigger distillation (default: 10)
+  snapshotInterval: number;          // Days between snapshots (default: 7)
+  maturityAgeDays: number;           // Days to reach maturity (default: 30)
+  stableAgeDays: number;             // Days to reach stability (default: 90)
+  enableCrossTransfer: boolean;      // Enable cross-pattern learning (default: true)
+}

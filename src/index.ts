@@ -27,3 +27,4 @@ export * from './trace/decision-trace.js';
 export * from './world/world-model.js';
 export * from './validation/behavioral-validator.js';
 export * from './adaptive/adaptive-memory.js';
+export * from './learning/continual-learner.js';
