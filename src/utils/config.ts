@@ -121,7 +121,7 @@ export function saveConfig(configPath?: string): void {
 }
 
 /**
- * Ensure all data directories exist
+ * Ensure all data directories exist (for default project)
  */
 export function ensureDirectories(): void {
   const dirs = [
@@ -136,6 +136,111 @@ export function ensureDirectories(): void {
       fs.mkdirSync(dir, { recursive: true });
     }
   }
+}
+
+/**
+ * Get project-specific data directory
+ * @param projectId - Optional project identifier. If undefined or 'default', returns the default data dir.
+ * @returns Path to the project's data directory
+ */
+export function getProjectDataDir(projectId?: string): string {
+  const baseDir = path.join(
+    process.env.HOME || process.env.USERPROFILE || '',
+    '.claude',
+    'titan-memory',
+    'data'
+  );
+
+  if (!projectId || projectId === 'default') {
+    return baseDir;
+  }
+
+  return path.join(baseDir, 'projects', projectId);
+}
+
+/**
+ * Get project-specific paths for all storage locations
+ * @param projectId - Optional project identifier
+ * @returns Object with all project-specific paths
+ */
+export function getProjectPaths(projectId?: string): {
+  dataDir: string;
+  episodicDir: string;
+  factualDbPath: string;
+  semanticDir: string;
+  memoryMdPath: string;
+} {
+  const projectDir = getProjectDataDir(projectId);
+
+  return {
+    dataDir: projectDir,
+    episodicDir: path.join(projectDir, 'episodic'),
+    factualDbPath: path.join(projectDir, 'factual', 'facts.json'),
+    semanticDir: path.join(projectDir, 'semantic'),
+    memoryMdPath: path.join(projectDir, 'MEMORY.md'),
+  };
+}
+
+/**
+ * Ensure project-specific directories exist
+ * @param projectId - Optional project identifier
+ */
+export function ensureProjectDirectories(projectId?: string): void {
+  const paths = getProjectPaths(projectId);
+
+  const dirs = [
+    paths.dataDir,
+    paths.episodicDir,
+    path.dirname(paths.factualDbPath),
+    paths.semanticDir,
+  ];
+
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  }
+}
+
+/**
+ * Get Zilliz collection name for a project
+ * @param projectId - Optional project identifier
+ * @returns Collection name with project suffix
+ */
+export function getProjectCollectionName(projectId?: string): string {
+  const baseCollection = currentConfig.zillizCollectionName || 'titan_memory';
+
+  if (!projectId || projectId === 'default') {
+    return baseCollection;
+  }
+
+  // Sanitize projectId for collection name (alphanumeric and underscores only)
+  const sanitized = projectId.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+  return `${baseCollection}_${sanitized}`;
+}
+
+/**
+ * List all project IDs that have data directories
+ * @returns Array of project IDs
+ */
+export function listProjects(): string[] {
+  const projectsDir = path.join(
+    process.env.HOME || process.env.USERPROFILE || '',
+    '.claude',
+    'titan-memory',
+    'data',
+    'projects'
+  );
+
+  if (!fs.existsSync(projectsDir)) {
+    return ['default'];
+  }
+
+  const projects = fs.readdirSync(projectsDir, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => dirent.name);
+
+  return ['default', ...projects];
 }
 
 /**

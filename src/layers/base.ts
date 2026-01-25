@@ -8,9 +8,18 @@ import { MemoryEntry, MemoryLayer, QueryOptions, QueryResult } from '../types.js
 export abstract class BaseMemoryLayer {
   protected layer: MemoryLayer;
   protected initialized: boolean = false;
+  protected projectId?: string;
 
-  constructor(layer: MemoryLayer) {
+  constructor(layer: MemoryLayer, projectId?: string) {
     this.layer = layer;
+    this.projectId = projectId;
+  }
+
+  /**
+   * Get the project ID for this layer
+   */
+  getProjectId(): string | undefined {
+    return this.projectId;
   }
 
   /**

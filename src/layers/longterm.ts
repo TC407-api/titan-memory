@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { BaseMemoryLayer } from './base.js';
 import { MemoryEntry, MemoryLayer, QueryOptions, QueryResult } from '../types.js';
 import { calculateSurprise, calculateMomentum, calculateDecay } from '../utils/surprise.js';
-import { getConfig } from '../utils/config.js';
+import { getConfig, getProjectCollectionName } from '../utils/config.js';
 
 interface VectorSearchResult {
   id: string;
@@ -22,8 +22,8 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
   private memoryCache: Map<string, MemoryEntry> = new Map();
   private zillizClient: ZillizClient | null = null;
 
-  constructor() {
-    super(MemoryLayer.LONG_TERM);
+  constructor(projectId?: string) {
+    super(MemoryLayer.LONG_TERM, projectId);
   }
 
   async initialize(): Promise<void> {
@@ -32,10 +32,12 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
     const config = getConfig();
 
     if (!config.offlineMode && config.zillizUri && config.zillizToken) {
+      // Use project-specific collection name for physical isolation
+      const collectionName = getProjectCollectionName(this.projectId) + '_longterm';
       this.zillizClient = new ZillizClient(
         config.zillizUri,
         config.zillizToken,
-        config.zillizCollectionName + '_longterm'
+        collectionName
       );
       await this.zillizClient.ensureCollection();
     }

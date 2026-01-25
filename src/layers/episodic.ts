@@ -9,7 +9,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseMemoryLayer } from './base.js';
 import { MemoryEntry, MemoryLayer, QueryOptions, QueryResult, CompactionContext } from '../types.js';
-import { getConfig } from '../utils/config.js';
+import { getProjectPaths, ensureProjectDirectories } from '../utils/config.js';
 import { extractInsights, scoreImportance } from '../utils/surprise.js';
 import { lshHash } from '../utils/hash.js';
 
@@ -34,19 +34,27 @@ export class EpisodicMemoryLayer extends BaseMemoryLayer {
   private logs: Map<string, DailyLog> = new Map(); // date string -> log
   private curatedMemory: string[] = []; // Lines from MEMORY.md
   private indexedContent: Map<string, string[]> = new Map(); // id -> LSH sigs
+  private episodicDir: string;
+  private memoryMdPath: string;
 
-  constructor() {
-    super(MemoryLayer.EPISODIC);
+  constructor(projectId?: string) {
+    super(MemoryLayer.EPISODIC, projectId);
+
+    // Use project-specific paths for physical isolation
+    const paths = getProjectPaths(projectId);
+    this.episodicDir = paths.episodicDir;
+    this.memoryMdPath = paths.memoryMdPath;
+
+    // Ensure project directories exist
+    ensureProjectDirectories(projectId);
   }
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    const config = getConfig();
-
-    // Ensure directories exist
-    if (!fs.existsSync(config.episodicDir)) {
-      fs.mkdirSync(config.episodicDir, { recursive: true });
+    // Ensure directories exist (using instance paths set in constructor)
+    if (!fs.existsSync(this.episodicDir)) {
+      fs.mkdirSync(this.episodicDir, { recursive: true });
     }
 
     // Load existing daily logs
@@ -59,13 +67,11 @@ export class EpisodicMemoryLayer extends BaseMemoryLayer {
   }
 
   private async loadLogs(): Promise<void> {
-    const config = getConfig();
-
-    const files = fs.readdirSync(config.episodicDir);
+    const files = fs.readdirSync(this.episodicDir);
     for (const file of files) {
       if (file.endsWith('.json')) {
         try {
-          const filePath = path.join(config.episodicDir, file);
+          const filePath = path.join(this.episodicDir, file);
           const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
           const date = file.replace('.json', '');
 
@@ -92,10 +98,8 @@ export class EpisodicMemoryLayer extends BaseMemoryLayer {
   }
 
   private async loadCuratedMemory(): Promise<void> {
-    const config = getConfig();
-
-    if (fs.existsSync(config.memoryMdPath)) {
-      const content = fs.readFileSync(config.memoryMdPath, 'utf-8');
+    if (fs.existsSync(this.memoryMdPath)) {
+      const content = fs.readFileSync(this.memoryMdPath, 'utf-8');
       this.curatedMemory = content
         .split('\n')
         .filter(line => line.trim().length > 0 && !line.startsWith('#'));
@@ -106,7 +110,12 @@ export class EpisodicMemoryLayer extends BaseMemoryLayer {
   }
 
   private async initializeMemoryMd(): Promise<void> {
-    const config = getConfig();
+    // Ensure parent directory exists
+    const dir = path.dirname(this.memoryMdPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
     const template = `# MEMORY.md - Curated Knowledge
 
 This file contains human-vetted, critical knowledge that should always be available.
@@ -127,16 +136,15 @@ Edit this file to add or remove curated memories.
 ## Notes
 
 `;
-    fs.writeFileSync(config.memoryMdPath, template);
+    fs.writeFileSync(this.memoryMdPath, template);
     this.curatedMemory = [];
   }
 
   private async saveLog(date: string): Promise<void> {
-    const config = getConfig();
     const log = this.logs.get(date);
     if (!log) return;
 
-    const filePath = path.join(config.episodicDir, `${date}.json`);
+    const filePath = path.join(this.episodicDir, `${date}.json`);
     fs.writeFileSync(filePath, JSON.stringify(log, null, 2));
   }
 
@@ -384,8 +392,7 @@ Edit this file to add or remove curated memories.
    * Add to curated MEMORY.md
    */
   async addToCurated(content: string, section?: string): Promise<void> {
-    const config = getConfig();
-    let memoryMd = fs.readFileSync(config.memoryMdPath, 'utf-8');
+    let memoryMd = fs.readFileSync(this.memoryMdPath, 'utf-8');
 
     if (section) {
       // Find section and append
@@ -414,7 +421,7 @@ Edit this file to add or remove curated memories.
       }
     }
 
-    fs.writeFileSync(config.memoryMdPath, memoryMd);
+    fs.writeFileSync(this.memoryMdPath, memoryMd);
     this.curatedMemory.push(content);
   }
 

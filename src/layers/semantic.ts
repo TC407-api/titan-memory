@@ -9,7 +9,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseMemoryLayer } from './base.js';
 import { MemoryEntry, MemoryLayer, QueryOptions, QueryResult } from '../types.js';
-import { getConfig } from '../utils/config.js';
+import { getProjectPaths, ensureProjectDirectories } from '../utils/config.js';
 import { calculateDecay, scoreImportance } from '../utils/surprise.js';
 import { lshHash } from '../utils/hash.js';
 
@@ -56,10 +56,15 @@ export class SemanticMemoryLayer extends BaseMemoryLayer {
   private lshIndex: Map<string, Set<string>> = new Map(); // LSH signature -> pattern IDs
   private dataPath: string;
 
-  constructor() {
-    super(MemoryLayer.SEMANTIC);
-    const config = getConfig();
-    this.dataPath = path.join(config.dataDir, 'semantic', 'patterns.json');
+  constructor(projectId?: string) {
+    super(MemoryLayer.SEMANTIC, projectId);
+
+    // Use project-specific path for physical isolation
+    const paths = getProjectPaths(projectId);
+    this.dataPath = path.join(paths.semanticDir, 'patterns.json');
+
+    // Ensure project directories exist
+    ensureProjectDirectories(projectId);
   }
 
   async initialize(): Promise<void> {

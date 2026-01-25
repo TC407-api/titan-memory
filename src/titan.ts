@@ -22,7 +22,12 @@ import {
   SemanticMemoryLayer,
   EpisodicMemoryLayer,
 } from './layers/index.js';
-import { loadConfig, ensureDirectories } from './utils/config.js';
+import {
+  loadConfig,
+  ensureDirectories,
+  ensureProjectDirectories,
+  listProjects,
+} from './utils/config.js';
 import { scoreImportance, calculatePatternBoost } from './utils/surprise.js';
 
 // Phase 3 imports
@@ -50,6 +55,9 @@ export class TitanMemory {
   private layers: Map<MemoryLayer, BaseMemoryLayer>;
   private initialized: boolean = false;
 
+  // Project isolation
+  private activeProjectId?: string;
+
   // Phase 3: Cognitive Enhancement Systems
   private knowledgeGraph: KnowledgeGraph;
   private decisionTracer: DecisionTraceManager;
@@ -58,14 +66,21 @@ export class TitanMemory {
   private adaptiveMemory: AdaptiveMemory;
   private continualLearner: ContinualLearner;
 
-  constructor(configPath?: string) {
+  constructor(configPath?: string, projectId?: string) {
     loadConfig(configPath);
     ensureDirectories();
 
-    this.factualLayer = new FactualMemoryLayer();
-    this.longTermLayer = new LongTermMemoryLayer();
-    this.semanticLayer = new SemanticMemoryLayer();
-    this.episodicLayer = new EpisodicMemoryLayer();
+    // Set active project and ensure project directories exist
+    this.activeProjectId = projectId;
+    if (projectId) {
+      ensureProjectDirectories(projectId);
+    }
+
+    // Create layers with project isolation
+    this.factualLayer = new FactualMemoryLayer(projectId);
+    this.longTermLayer = new LongTermMemoryLayer(projectId);
+    this.semanticLayer = new SemanticMemoryLayer(projectId);
+    this.episodicLayer = new EpisodicMemoryLayer(projectId);
 
     this.layers = new Map<MemoryLayer, BaseMemoryLayer>([
       [MemoryLayer.FACTUAL, this.factualLayer as BaseMemoryLayer],
@@ -81,6 +96,61 @@ export class TitanMemory {
     this.validator = new BehavioralValidator();
     this.adaptiveMemory = new AdaptiveMemory();
     this.continualLearner = new ContinualLearner();
+  }
+
+  /**
+   * Get the current active project ID
+   */
+  getActiveProject(): string | undefined {
+    return this.activeProjectId;
+  }
+
+  /**
+   * Set the active project - recreates all layer instances with new project isolation
+   * This is a heavy operation and should be called sparingly
+   * @param projectId - The project ID to switch to, or undefined for default
+   */
+  async setActiveProject(projectId?: string): Promise<void> {
+    // Skip if already on this project
+    if (this.activeProjectId === projectId) {
+      return;
+    }
+
+    // Close existing layers if initialized
+    if (this.initialized) {
+      await this.close();
+    }
+
+    // Update active project
+    this.activeProjectId = projectId;
+
+    // Ensure project directories exist
+    if (projectId) {
+      ensureProjectDirectories(projectId);
+    }
+
+    // Recreate all layers with new projectId
+    this.factualLayer = new FactualMemoryLayer(projectId);
+    this.longTermLayer = new LongTermMemoryLayer(projectId);
+    this.semanticLayer = new SemanticMemoryLayer(projectId);
+    this.episodicLayer = new EpisodicMemoryLayer(projectId);
+
+    this.layers = new Map<MemoryLayer, BaseMemoryLayer>([
+      [MemoryLayer.FACTUAL, this.factualLayer as BaseMemoryLayer],
+      [MemoryLayer.LONG_TERM, this.longTermLayer as BaseMemoryLayer],
+      [MemoryLayer.SEMANTIC, this.semanticLayer as BaseMemoryLayer],
+      [MemoryLayer.EPISODIC, this.episodicLayer as BaseMemoryLayer],
+    ]);
+
+    // Mark as not initialized so next operation triggers initialization
+    this.initialized = false;
+  }
+
+  /**
+   * List all available projects
+   */
+  static listProjects(): string[] {
+    return listProjects();
   }
 
   /**
@@ -1023,15 +1093,28 @@ export class TitanMemory {
 // Export singleton instance
 let instance: TitanMemory | null = null;
 
-export function getTitan(): TitanMemory {
+export function getTitan(projectId?: string): TitanMemory {
   if (!instance) {
-    instance = new TitanMemory();
+    instance = new TitanMemory(undefined, projectId);
   }
   return instance;
 }
 
-export async function initTitan(configPath?: string): Promise<TitanMemory> {
-  instance = new TitanMemory(configPath);
+export async function initTitan(
+  configPath?: string,
+  projectId?: string
+): Promise<TitanMemory> {
+  instance = new TitanMemory(configPath, projectId);
   await instance.initialize();
   return instance;
+}
+
+/**
+ * Get or create a TitanMemory instance for a specific project
+ * Use this when you need multiple projects simultaneously
+ */
+export async function initTitanForProject(projectId: string): Promise<TitanMemory> {
+  const titan = new TitanMemory(undefined, projectId);
+  await titan.initialize();
+  return titan;
 }

@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { BaseMemoryLayer } from './base.js';
 import { MemoryEntry, MemoryLayer, QueryOptions, QueryResult } from '../types.js';
 import { computeNgramHash, extractNgrams, createContentHash } from '../utils/hash.js';
-import { getConfig } from '../utils/config.js';
+import { getConfig, getProjectPaths, ensureProjectDirectories } from '../utils/config.js';
 
 interface FactEntry {
   id: string;
@@ -40,11 +40,16 @@ export class FactualMemoryLayer extends BaseMemoryLayer {
   private dataPath: string;
   private dirty: boolean = false;
 
-  constructor() {
-    super(MemoryLayer.FACTUAL);
+  constructor(projectId?: string) {
+    super(MemoryLayer.FACTUAL, projectId);
     this.tableSize = getConfig().hashTableSize;
-    const config = getConfig();
-    this.dataPath = config.factualDbPath.replace('.db', '.json');
+
+    // Use project-specific path for physical isolation
+    const paths = getProjectPaths(projectId);
+    this.dataPath = paths.factualDbPath;
+
+    // Ensure project directories exist
+    ensureProjectDirectories(projectId);
   }
 
   async initialize(): Promise<void> {
