@@ -28,3 +28,6 @@ export * from './world/world-model.js';
 export * from './validation/behavioral-validator.js';
 export * from './adaptive/adaptive-memory.js';
 export * from './learning/continual-learner.js';
+
+// Phase 4: A2A Protocol Support (Multi-Agent Coordination)
+export * from './a2a/index.js';
