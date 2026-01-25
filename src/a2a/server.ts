@@ -4,7 +4,16 @@
  */
 
 import { WebSocketServer, WebSocket, RawData } from 'ws';
+import http from 'http';
+import { URL } from 'url';
 import { EventEmitter } from 'events';
+import {
+  initAuth,
+  getAuthConfig,
+  validateA2AToken,
+  shouldBypassAuth,
+  type AuthConfig,
+} from '../utils/auth.js';
 import {
   A2AMessage,
   A2AServerConfig,
@@ -86,15 +95,42 @@ export class A2AServer extends EventEmitter {
   /**
    * Start the server
    */
-  start(): Promise<void> {
+  start(authConfig?: Partial<AuthConfig>): Promise<void> {
+    // Initialize auth if config provided
+    if (authConfig) {
+      initAuth(authConfig);
+    }
+
     return new Promise((resolve, reject) => {
       try {
         this.wss = new WebSocketServer({
           port: this.config.port,
           host: this.config.host,
+          // Verify client before connection upgrade
+          verifyClient: (info, callback) => {
+            const auth = getAuthConfig();
+            const remoteAddress = info.req.socket.remoteAddress;
+
+            // Allow localhost without auth if configured
+            if (shouldBypassAuth(remoteAddress)) {
+              callback(true);
+              return;
+            }
+
+            // Extract token from query string or header
+            const url = new URL(info.req.url || '/', `ws://${info.req.headers.host}`);
+            const token = url.searchParams.get('token') ||
+              (info.req.headers[auth.tokenHeader.toLowerCase()] as string);
+
+            if (validateA2AToken(token)) {
+              callback(true);
+            } else {
+              callback(false, 401, 'Unauthorized: Valid A2A token required');
+            }
+          },
         });
 
-        this.wss.on('connection', (ws) => this.handleConnection(ws));
+        this.wss.on('connection', (ws, req) => this.handleConnection(ws, req));
         this.wss.on('error', (error) => {
           this.emit('error', error);
           reject(error);
@@ -165,7 +201,7 @@ export class A2AServer extends EventEmitter {
   /**
    * Handle new WebSocket connection
    */
-  private handleConnection(ws: WebSocket): void {
+  private handleConnection(ws: WebSocket, _req?: http.IncomingMessage): void {
     let agentId: string | null = null;
 
     ws.on('message', (data: RawData) => {

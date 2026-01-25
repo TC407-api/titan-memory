@@ -42,6 +42,8 @@ const DEFAULT_CONFIG: ContinualLearnerConfig = {
 
 export class ContinualLearner {
   private patterns: Map<string, PatternLifecycle> = new Map();
+  // Reverse index for O(1) memoryId → patternId lookup
+  private memoryIdToPattern: Map<string, string> = new Map();
   private rehearsalQueue: Map<string, RehearsalEntry> = new Map();
   private domainLearningRates: Map<string, number> = new Map();
   private forgettingAlerts: ForgettingRisk[] = [];
@@ -67,9 +69,10 @@ export class ContinualLearner {
   private async loadFromDisk(): Promise<void> {
     if (fs.existsSync(this.dataPath)) {
       try {
-        const data = JSON.parse(fs.readFileSync(this.dataPath, 'utf-8'));
+        // Use async file read
+        const data = JSON.parse(await fs.promises.readFile(this.dataPath, 'utf-8'));
 
-        // Load patterns
+        // Load patterns and build reverse index
         for (const pattern of data.patterns || []) {
           pattern.createdAt = new Date(pattern.createdAt);
           pattern.snapshotDate = new Date(pattern.snapshotDate);
@@ -81,6 +84,8 @@ export class ContinualLearner {
             timestamp: new Date(u.timestamp),
           }));
           this.patterns.set(pattern.id, pattern);
+          // Build reverse index for O(1) lookup
+          this.memoryIdToPattern.set(pattern.memoryId, pattern.id);
         }
 
         // Load rehearsal queue
@@ -119,7 +124,7 @@ export class ContinualLearner {
   private async saveToDisk(): Promise<void> {
     const dir = path.dirname(this.dataPath);
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      await fs.promises.mkdir(dir, { recursive: true });
     }
 
     const data = {
@@ -133,7 +138,8 @@ export class ContinualLearner {
       distillationCount: this.distillationCount,
     };
 
-    fs.writeFileSync(this.dataPath, JSON.stringify(data, null, 2));
+    // Use async file write
+    await fs.promises.writeFile(this.dataPath, JSON.stringify(data, null, 2));
   }
 
   // ==================== Pattern Lifecycle Management ====================
@@ -176,6 +182,8 @@ export class ContinualLearner {
     };
 
     this.patterns.set(pattern.id, pattern);
+    // Maintain reverse index for O(1) lookup
+    this.memoryIdToPattern.set(memory.id, pattern.id);
 
     // Schedule initial rehearsal
     this.scheduleRehearsal(pattern.id, 1);
@@ -617,14 +625,12 @@ export class ContinualLearner {
 
   /**
    * Find pattern by memory ID
+   * O(1) lookup using reverse index
    */
   findPatternByMemoryId(memoryId: string): PatternLifecycle | undefined {
-    for (const pattern of this.patterns.values()) {
-      if (pattern.memoryId === memoryId) {
-        return pattern;
-      }
-    }
-    return undefined;
+    const patternId = this.memoryIdToPattern.get(memoryId);
+    if (!patternId) return undefined;
+    return this.patterns.get(patternId);
   }
 
   /**
@@ -717,6 +723,7 @@ export class ContinualLearner {
   async close(): Promise<void> {
     await this.saveToDisk();
     this.patterns.clear();
+    this.memoryIdToPattern.clear(); // Clear reverse index
     this.rehearsalQueue.clear();
     this.domainLearningRates.clear();
     this.forgettingAlerts = [];

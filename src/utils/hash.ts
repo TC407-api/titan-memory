@@ -161,3 +161,17 @@ export function lshHash(
 
   return bandSignatures;
 }
+
+/**
+ * Simple hash function for deterministic embedding generation
+ * Used by vector storage for pseudo-embeddings when no external API is available
+ */
+export function simpleHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return hash;
+}

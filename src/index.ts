@@ -17,6 +17,7 @@
 
 export * from './types.js';
 export * from './titan.js';
+export * from './errors.js';
 export * from './layers/index.js';
 export * from './utils/index.js';
 export * from './mcp/index.js';

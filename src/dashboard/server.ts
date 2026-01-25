@@ -9,12 +9,22 @@ import fs from 'fs';
 import { TitanMemory, initTitan, initTitanForProject } from '../titan.js';
 import { DashboardWebSocket } from './websocket.js';
 import { createApiRouter } from './api.js';
+import {
+  initAuth,
+  getAuthConfig,
+  validateDashboardToken,
+  shouldBypassAuth,
+  isAllowedOrigin,
+  type AuthConfig,
+} from '../utils/auth.js';
 
 export interface DashboardConfig {
   port: number;
   host: string;
   projectId?: string;
   corsOrigins?: string[];
+  /** Authentication configuration */
+  auth?: Partial<AuthConfig>;
 }
 
 export class DashboardServer {
@@ -29,8 +39,13 @@ export class DashboardServer {
       port: config.port || 3939,
       host: config.host || '127.0.0.1',
       projectId: config.projectId,
-      corsOrigins: config.corsOrigins || ['*'],
+      // Default to localhost only - more secure default
+      corsOrigins: config.corsOrigins || ['http://localhost:3939', 'http://127.0.0.1:3939'],
     };
+    // Initialize authentication
+    if (config.auth) {
+      initAuth(config.auth);
+    }
     // Resolve static directory relative to this file's location in dist
     this.staticDir = path.resolve(__dirname, 'static');
   }
@@ -106,11 +121,21 @@ export class DashboardServer {
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
     const pathname = url.pathname;
+    const origin = req.headers.origin;
+    const authConfig = getAuthConfig();
 
-    // Set CORS headers
-    res.setHeader('Access-Control-Allow-Origin', this.config.corsOrigins?.join(', ') || '*');
+    // Set CORS headers - validate origin against whitelist
+    const allowedOrigin = isAllowedOrigin(origin, this.config.corsOrigins || [])
+      ? origin
+      : this.config.corsOrigins?.[0] || '';
+
+    if (allowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+      res.setHeader('Vary', 'Origin');
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', `Content-Type, ${authConfig.tokenHeader}`);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
 
     // Handle preflight
     if (req.method === 'OPTIONS') {
@@ -120,13 +145,22 @@ export class DashboardServer {
     }
 
     try {
-      // API routes
+      // API routes require authentication
       if (pathname.startsWith('/api/')) {
+        // Check authentication
+        const remoteAddress = req.socket.remoteAddress;
+        const token = req.headers[authConfig.tokenHeader.toLowerCase()] as string | undefined;
+
+        if (!shouldBypassAuth(remoteAddress) && !validateDashboardToken(token)) {
+          this.sendJson(res, 401, { error: 'Unauthorized', message: 'Valid API token required' });
+          return;
+        }
+
         await this.handleApiRequest(req, res, pathname, url);
         return;
       }
 
-      // Static file serving
+      // Static file serving (no auth required for UI)
       await this.serveStatic(pathname, res);
     } catch (error) {
       console.error('Request error:', error);

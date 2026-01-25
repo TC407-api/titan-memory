@@ -74,6 +74,61 @@ interface AccessEvent {
   context?: string;
 }
 
+// Circular buffer for efficient O(1) access history tracking
+class CircularAccessBuffer {
+  private buffer: AccessEvent[];
+  private head: number = 0;
+  private count: number = 0;
+  private readonly capacity: number;
+
+  constructor(capacity: number) {
+    this.capacity = capacity;
+    this.buffer = new Array(capacity);
+  }
+
+  push(event: AccessEvent): void {
+    this.buffer[this.head] = event;
+    this.head = (this.head + 1) % this.capacity;
+    if (this.count < this.capacity) {
+      this.count++;
+    }
+  }
+
+  getAll(): AccessEvent[] {
+    if (this.count === 0) return [];
+    const result: AccessEvent[] = [];
+    const start = this.count < this.capacity ? 0 : this.head;
+    for (let i = 0; i < this.count; i++) {
+      result.push(this.buffer[(start + i) % this.capacity]);
+    }
+    return result;
+  }
+
+  getLatest(): AccessEvent | null {
+    if (this.count === 0) return null;
+    const index = (this.head - 1 + this.capacity) % this.capacity;
+    return this.buffer[index];
+  }
+
+  size(): number {
+    return this.count;
+  }
+
+  toJSON(): AccessEvent[] {
+    return this.getAll();
+  }
+
+  static fromArray(events: AccessEvent[], capacity: number): CircularAccessBuffer {
+    const buffer = new CircularAccessBuffer(capacity);
+    // Only keep the most recent events up to capacity
+    const start = Math.max(0, events.length - capacity);
+    for (let i = start; i < events.length; i++) {
+      buffer.push(events[i]);
+    }
+    return buffer;
+  }
+}
+
 // Adaptation stats
 export interface AdaptationStats {
   totalConsolidations: number;
@@ -84,7 +139,8 @@ export interface AdaptationStats {
 }
 
 export class AdaptiveMemory {
-  private accessHistory: Map<string, AccessEvent[]> = new Map();
+  // Use CircularAccessBuffer for O(1) operations and bounded memory
+  private accessHistory: Map<string, CircularAccessBuffer> = new Map();
   private importanceCache: Map<string, number> = new Map();
   private clusters: Map<string, MemoryCluster> = new Map();
   private consolidations: Map<string, ConsolidatedMemory> = new Map();
@@ -103,6 +159,8 @@ export class AdaptiveMemory {
     surpriseWeight: 0.10,
     consolidationThreshold: 0.85, // Similarity threshold for consolidation
     contextWindowSize: 50,
+    maxConsolidationCandidates: 100, // Limit for O(n²) comparison
+    maxFusionComparisons: 20,        // Limit for fusion confidence
   };
 
   constructor() {
@@ -125,13 +183,18 @@ export class AdaptiveMemory {
   private async loadFromDisk(): Promise<void> {
     if (fs.existsSync(this.dataPath)) {
       try {
-        const data = JSON.parse(fs.readFileSync(this.dataPath, 'utf-8'));
+        // Use async file read
+        const data = JSON.parse(await fs.promises.readFile(this.dataPath, 'utf-8'));
 
-        // Load access history
+        // Load access history into circular buffers
         for (const [memoryId, events] of Object.entries(data.accessHistory || {})) {
+          const parsedEvents = (events as AccessEvent[]).map(e => ({
+            ...e,
+            timestamp: new Date(e.timestamp),
+          }));
           this.accessHistory.set(
             memoryId,
-            (events as AccessEvent[]).map(e => ({ ...e, timestamp: new Date(e.timestamp) }))
+            CircularAccessBuffer.fromArray(parsedEvents, this.config.maxAccessHistoryPerMemory)
           );
         }
 
@@ -166,26 +229,34 @@ export class AdaptiveMemory {
   private async saveToDisk(): Promise<void> {
     const dir = path.dirname(this.dataPath);
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      await fs.promises.mkdir(dir, { recursive: true });
+    }
+
+    // Convert CircularAccessBuffer to plain arrays for serialization
+    const accessHistoryObj: Record<string, AccessEvent[]> = {};
+    for (const [memoryId, buffer] of this.accessHistory.entries()) {
+      accessHistoryObj[memoryId] = buffer.toJSON();
     }
 
     const data = {
       version: '1.0',
       savedAt: new Date().toISOString(),
-      accessHistory: Object.fromEntries(this.accessHistory),
+      accessHistory: accessHistoryObj,
       importanceCache: Object.fromEntries(this.importanceCache),
       clusters: [...this.clusters.values()],
       consolidations: [...this.consolidations.values()],
       contextWindow: this.contextWindow,
     };
 
-    fs.writeFileSync(this.dataPath, JSON.stringify(data, null, 2));
+    // Use async file write
+    await fs.promises.writeFile(this.dataPath, JSON.stringify(data, null, 2));
   }
 
   // ==================== Access Tracking ====================
 
   /**
    * Record a memory access
+   * O(1) operation using circular buffer
    */
   async recordAccess(memoryId: string, context?: string): Promise<void> {
     const event: AccessEvent = {
@@ -194,17 +265,15 @@ export class AdaptiveMemory {
       context,
     };
 
-    if (!this.accessHistory.has(memoryId)) {
-      this.accessHistory.set(memoryId, []);
+    // Get or create circular buffer for this memory
+    let buffer = this.accessHistory.get(memoryId);
+    if (!buffer) {
+      buffer = new CircularAccessBuffer(this.config.maxAccessHistoryPerMemory);
+      this.accessHistory.set(memoryId, buffer);
     }
 
-    const history = this.accessHistory.get(memoryId)!;
-    history.push(event);
-
-    // Trim history if too long
-    if (history.length > this.config.maxAccessHistoryPerMemory) {
-      history.shift();
-    }
+    // O(1) push - no array shift needed
+    buffer.push(event);
 
     // Invalidate importance cache
     this.importanceCache.delete(memoryId);
@@ -215,18 +284,21 @@ export class AdaptiveMemory {
 
   /**
    * Get access count for a memory
+   * O(1) operation
    */
   getAccessCount(memoryId: string): number {
-    return this.accessHistory.get(memoryId)?.length || 0;
+    return this.accessHistory.get(memoryId)?.size() || 0;
   }
 
   /**
    * Get last access time
+   * O(1) operation
    */
   getLastAccess(memoryId: string): Date | null {
-    const history = this.accessHistory.get(memoryId);
-    if (!history || history.length === 0) return null;
-    return history[history.length - 1].timestamp;
+    const buffer = this.accessHistory.get(memoryId);
+    if (!buffer) return null;
+    const latest = buffer.getLatest();
+    return latest?.timestamp || null;
   }
 
   // ==================== Importance Scoring ====================
@@ -532,16 +604,25 @@ export class AdaptiveMemory {
 
   private calculateFusionConfidence(memories: MemoryEntry[]): number {
     if (memories.length === 0) return 0;
+    if (memories.length === 1) return 1;
+
+    // Limit comparisons to avoid O(n²) explosion for large sets
+    // Sample a subset if there are too many memories
+    const maxComparisons = this.config.maxFusionComparisons;
+    const sampleSize = Math.min(memories.length, Math.ceil(Math.sqrt(maxComparisons * 2)));
+    const sampled = memories.length <= sampleSize
+      ? memories
+      : memories.slice(0, sampleSize);
 
     // Higher confidence if memories are similar (coherent)
     let totalSimilarity = 0;
     let comparisons = 0;
 
-    for (let i = 0; i < memories.length - 1; i++) {
-      for (let j = i + 1; j < memories.length; j++) {
+    for (let i = 0; i < sampled.length - 1 && comparisons < maxComparisons; i++) {
+      for (let j = i + 1; j < sampled.length && comparisons < maxComparisons; j++) {
         totalSimilarity += this.calculateSimilarity(
-          memories[i].content,
-          memories[j].content
+          sampled[i].content,
+          sampled[j].content
         );
         comparisons++;
       }
