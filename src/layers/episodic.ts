@@ -205,10 +205,16 @@ Edit this file to add or remove curated memories.
     const entries: MemoryEntry[] = [];
     const now = new Date();
 
-    // Store important insights
-    const insights = extractInsights(context.importantInsights.join('\n'));
+    // Get insights from either field (importantInsights or insights alias)
+    const importantInsights = context.importantInsights || context.insights || [];
+    const contextDecisions = context.decisions || [];
+    const contextErrors = context.errors || [];
+    const contextSolutions = context.solutions || [];
 
-    for (const decision of [...context.decisions, ...insights.decisions]) {
+    // Store important insights
+    const insights = extractInsights(importantInsights.join('\n'));
+
+    for (const decision of [...contextDecisions, ...insights.decisions]) {
       entries.push(await this.store({
         content: `[Decision] ${decision}`,
         timestamp: now,
@@ -220,7 +226,7 @@ Edit this file to add or remove curated memories.
       }));
     }
 
-    for (const error of [...context.errors, ...insights.errors]) {
+    for (const error of [...contextErrors, ...insights.errors]) {
       entries.push(await this.store({
         content: `[Error] ${error}`,
         timestamp: now,
@@ -232,7 +238,7 @@ Edit this file to add or remove curated memories.
       }));
     }
 
-    for (const solution of [...context.solutions, ...insights.solutions]) {
+    for (const solution of [...contextSolutions, ...insights.solutions]) {
       entries.push(await this.store({
         content: `[Solution] ${solution}`,
         timestamp: now,

@@ -33,6 +33,10 @@ const DEFAULT_CONFIG: TitanConfig = {
   enableSurpriseFiltering: true,
   enableContinualLearning: true,
   offlineMode: false,
+
+  // FR-3: Proactive Context Flush
+  contextFlushThreshold: 0.5,  // 50%
+  enableProactiveFlush: true,
 };
 
 let currentConfig: TitanConfig = { ...DEFAULT_CONFIG };

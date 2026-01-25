@@ -14,6 +14,7 @@ import {
   UnifiedQueryResult,
   MemoryStats,
   CompactionContext,
+  MemorySummary,
 } from './types.js';
 import {
   BaseMemoryLayer,
@@ -29,6 +30,13 @@ import {
   listProjects,
 } from './utils/config.js';
 import { scoreImportance, calculatePatternBoost } from './utils/surprise.js';
+import {
+  UtilitySignal,
+  applyFeedback,
+  getUtilityTracker,
+  weightByUtility,
+  shouldPruneByUtility,
+} from './utils/utility.js';
 
 // Phase 3 imports
 import { KnowledgeGraph, ExtractionResult, GraphQueryResult } from './graph/knowledge-graph.js';
@@ -405,14 +413,17 @@ export class TitanMemory {
 
   /**
    * Query memories (with intelligent routing, fusion, and Phase 3 enhancements)
+   * FR-1: Results weighted by utility score
+   * FR-2: Supports progressive disclosure modes (full/summary/metadata)
    */
-  async recall(query: string, options?: QueryOptions): Promise<UnifiedQueryResult> {
+  async recall(query: string, options?: QueryOptions): Promise<UnifiedQueryResult | { summaries: MemorySummary[]; totalQueryTimeMs: number }> {
     if (!this.initialized) await this.initialize();
 
     const startTime = performance.now();
     const decision = this.gateQuery(query);
     const targetLayers = options?.layers || decision.layers;
     const limit = options?.limit || 10;
+    const mode = options?.mode || 'full';
 
     // Query all target layers in parallel
     const queryPromises = targetLayers.map(layerId => {
@@ -428,6 +439,12 @@ export class TitanMemory {
     // Fuse results with priority weighting
     let fusedMemories = this.fuseResults(results, decision.priority, limit);
 
+    // FR-1: Apply utility weighting to results
+    const baseScores = fusedMemories.map((_, idx) => 1.0 - (idx * 0.05)); // Position-based scores
+    const weightedResults = weightByUtility(fusedMemories, baseScores);
+    weightedResults.sort((a, b) => b.weightedScore - a.weightedScore);
+    fusedMemories = weightedResults.map(w => w.memory).slice(0, limit);
+
     // Phase 3: Prioritize using adaptive memory
     fusedMemories = await this.adaptiveMemory.prioritizeForRecall(
       fusedMemories,
@@ -441,6 +458,27 @@ export class TitanMemory {
     }
 
     const totalQueryTimeMs = performance.now() - startTime;
+
+    // FR-2: Progressive disclosure - return based on mode
+    if (mode === 'metadata' || mode === 'summary') {
+      const summaries: MemorySummary[] = fusedMemories.map((memory, idx) => ({
+        id: memory.id,
+        summary: mode === 'summary'
+          ? memory.content.substring(0, 100) + (memory.content.length > 100 ? '...' : '')
+          : '',
+        tags: (memory.metadata.tags as string[]) || [],
+        layer: memory.layer,
+        relevanceScore: weightedResults[idx]?.weightedScore || 0,
+        tokenEstimate: Math.ceil(memory.content.length / 4), // Rough token estimate
+        timestamp: memory.timestamp,
+        utilityScore: memory.metadata.utilityScore as number | undefined,
+      }));
+
+      return {
+        summaries,
+        totalQueryTimeMs,
+      };
+    }
 
     return {
       results,
@@ -589,21 +627,116 @@ export class TitanMemory {
 
   /**
    * Prune old/decayed memories
+   * FR-1: Also prunes memories with low utility scores
    */
   async prune(options?: {
     decayThreshold?: number;
     maxAge?: number; // days
-  }): Promise<{ pruned: number }> {
+    utilityThreshold?: number; // FR-1: Utility threshold for pruning
+  }): Promise<{ pruned: number; prunedByDecay: number; prunedByUtility: number }> {
     if (!this.initialized) await this.initialize();
 
-    let pruned = 0;
+    let prunedByDecay = 0;
+    let prunedByUtility = 0;
 
-    // Prune long-term layer
-    pruned += await this.longTermLayer.pruneDecayed(
+    // Prune long-term layer by decay
+    prunedByDecay = await this.longTermLayer.pruneDecayed(
       options?.decayThreshold || 0.05
     );
 
-    return { pruned };
+    // FR-1: Prune by utility score
+    if (options?.utilityThreshold !== undefined) {
+      // Get all memories and check utility
+      for (const layer of this.layers.values()) {
+        const result = await layer.query('', { limit: 1000 });
+        for (const memory of result.memories) {
+          if (shouldPruneByUtility(memory.metadata, options.utilityThreshold)) {
+            const deleted = await layer.delete(memory.id);
+            if (deleted) prunedByUtility++;
+          }
+        }
+      }
+    }
+
+    return {
+      pruned: prunedByDecay + prunedByUtility,
+      prunedByDecay,
+      prunedByUtility,
+    };
+  }
+
+  /**
+   * FR-1: Record utility feedback for a memory
+   * @param id - Memory ID
+   * @param signal - 'helpful' or 'harmful'
+   * @param sessionId - Optional session ID for idempotency
+   * @param context - Optional context about why helpful/harmful
+   */
+  async recordFeedback(
+    id: string,
+    signal: UtilitySignal,
+    sessionId?: string,
+    context?: string
+  ): Promise<{
+    success: boolean;
+    memoryId: string;
+    signal: UtilitySignal;
+    newUtilityScore?: number;
+    message?: string;
+  }> {
+    if (!this.initialized) await this.initialize();
+
+    // Find the memory
+    const memory = await this.get(id);
+    if (!memory) {
+      return {
+        success: false,
+        memoryId: id,
+        signal,
+        message: `Memory not found: ${id}`,
+      };
+    }
+
+    // Check for duplicate feedback in same session
+    const tracker = getUtilityTracker();
+    const recorded = tracker.recordFeedback(id, signal, sessionId, context);
+
+    if (!recorded) {
+      return {
+        success: false,
+        memoryId: id,
+        signal,
+        newUtilityScore: memory.metadata.utilityScore as number | undefined,
+        message: 'Feedback already recorded in this session (idempotent)',
+      };
+    }
+
+    // Apply the feedback to the memory metadata
+    const updatedMetadata = applyFeedback(memory.metadata, signal);
+
+    // Update the memory in its layer
+    // We need to find which layer it's in and update it
+    for (const [, layer] of this.layers) {
+      const existingMemory = await layer.get(id);
+      if (existingMemory) {
+        // Update the memory with new metadata
+        // First delete, then re-store with updated metadata
+        await layer.delete(id);
+        await layer.store({
+          content: existingMemory.content,
+          timestamp: existingMemory.timestamp,
+          metadata: updatedMetadata,
+        });
+        break;
+      }
+    }
+
+    return {
+      success: true,
+      memoryId: id,
+      signal,
+      newUtilityScore: updatedMetadata.utilityScore,
+    };
   }
 
   /**

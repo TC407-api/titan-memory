@@ -32,6 +32,13 @@ export interface MemoryMetadata {
   tags?: string[];
   routingReason?: string;
 
+  // FR-1: Utility Tracking (helpful/harmful)
+  helpfulCount?: number;      // Incremented when memory aids task completion
+  harmfulCount?: number;      // Incremented when memory causes confusion/error
+  lastHelpful?: string;       // ISO timestamp
+  lastHarmful?: string;       // ISO timestamp
+  utilityScore?: number;      // Computed: helpful / (helpful + harmful)
+
   // Layer 2 (Factual) specific
   hashKey?: string;
   ngrams?: string[];
@@ -70,6 +77,9 @@ export interface SurpriseResult {
   similarMemories: string[]; // IDs of similar existing memories
 }
 
+// FR-2: Recall Mode for Progressive Disclosure
+export type RecallMode = 'full' | 'summary' | 'metadata';
+
 // Query Options
 export interface QueryOptions {
   layers?: MemoryLayer[];  // Which layers to query
@@ -82,6 +92,19 @@ export interface QueryOptions {
   };
   tags?: string[];
   includeDecayed?: boolean; // Include memories below decay threshold
+  mode?: RecallMode;       // FR-2: Progressive disclosure mode (default: 'full')
+}
+
+// FR-2: Memory Summary (for progressive disclosure modes)
+export interface MemorySummary {
+  id: string;
+  summary: string;           // First 100 chars or generated summary
+  tags: string[];
+  layer: MemoryLayer;
+  relevanceScore: number;
+  tokenEstimate: number;     // Estimated tokens if loaded full
+  timestamp: Date;
+  utilityScore?: number;     // FR-1: Include utility for ranking
 }
 
 // Query Result
@@ -139,17 +162,31 @@ export interface TitanConfig {
   enableSurpriseFiltering: boolean;
   enableContinualLearning: boolean;
   offlineMode: boolean;
+
+  // FR-3: Proactive Context Flush
+  contextFlushThreshold: number;  // Default: 0.5 (50%)
+  enableProactiveFlush: boolean;  // Default: true
 }
 
 // Pre-compaction context
 export interface CompactionContext {
   sessionId: string;
-  timestamp: Date;
-  tokenCount: number;
-  importantInsights: string[];
-  decisions: string[];
-  errors: string[];
-  solutions: string[];
+  timestamp?: Date;
+  tokenCount?: number;
+  importantInsights?: string[];
+  insights?: string[];           // Alias for importantInsights
+  decisions?: string[];
+  errors?: string[];
+  solutions?: string[];
+  // FR-3: Proactive flush metadata
+  metadata?: {
+    reason?: 'proactive_context_management' | 'emergency' | 'manual';
+    contextRatio?: number;
+    triggerThreshold?: number;
+    timestamp?: string;
+    debounced?: boolean;
+    [key: string]: unknown;
+  };
 }
 
 // Pattern Types for Surprise Detection

@@ -85,7 +85,11 @@ describe('TitanMemory', () => {
     it('should recall relevant memories', async () => {
       const result = await titan.recall('caching');
 
-      expect(result.fusedMemories.length).toBeGreaterThanOrEqual(0);
+      if ('fusedMemories' in result) {
+        expect(result.fusedMemories.length).toBeGreaterThanOrEqual(0);
+      } else {
+        expect(result.summaries.length).toBeGreaterThanOrEqual(0);
+      }
     });
 
     it('should return query time', async () => {
@@ -98,7 +102,11 @@ describe('TitanMemory', () => {
     it('should respect limit option', async () => {
       const result = await titan.recall('data', { limit: 1 });
 
-      expect(result.fusedMemories.length).toBeLessThanOrEqual(1);
+      if ('fusedMemories' in result) {
+        expect(result.fusedMemories.length).toBeLessThanOrEqual(1);
+      } else {
+        expect(result.summaries.length).toBeLessThanOrEqual(1);
+      }
     });
   });
 

@@ -7,6 +7,8 @@ import { TitanMemory } from '../titan.js';
 import { MemoryLayer, MemoryEntry } from '../types.js';
 import { listProjects } from '../utils/config.js';
 import type { DashboardServer } from './server.js';
+import { getContextMonitor } from '../monitoring/context-monitor.js';
+import { getProactiveFlushManager } from '../utils/proactive-flush.js';
 
 export interface ApiRequest {
   params: Record<string, string>;
@@ -215,8 +217,11 @@ export function createApiRouter(titan: TitanMemory, server: DashboardServer): Ap
           } : undefined,
         });
 
-        // Emit search event
-        server.emitEvent('search', { query: body.query, resultCount: result.fusedMemories.length });
+        // Emit search event - handle both result types
+        const resultCount = 'fusedMemories' in result
+          ? result.fusedMemories.length
+          : result.summaries.length;
+        server.emitEvent('search', { query: body.query, resultCount });
 
         return result;
       },
@@ -449,6 +454,179 @@ export function createApiRouter(titan: TitanMemory, server: DashboardServer): Ap
         }
         await titan.curate(body.content, body.section);
         server.emitEvent('memory:curate', { section: body.section });
+        return { success: true };
+      },
+    },
+
+    // ==================== FR-5: Context Monitoring ====================
+
+    // Get current context status
+    {
+      method: 'GET',
+      path: '/api/grade5/context-status',
+      handler: async () => {
+        const monitor = getContextMonitor();
+        return monitor.getStatus();
+      },
+    },
+
+    // Update context usage (for external integrations)
+    {
+      method: 'POST',
+      path: '/api/grade5/context-status',
+      handler: async (req) => {
+        const body = req.body as {
+          totalTokens: number;
+          event?: string;
+          agentId?: string;
+        };
+
+        if (typeof body.totalTokens !== 'number') {
+          throw new Error('totalTokens is required');
+        }
+
+        const monitor = getContextMonitor();
+        monitor.update(body.totalTokens, body.event, body.agentId);
+
+        // Emit real-time update via WebSocket
+        server.emitEvent('context:update', monitor.getStatus());
+
+        return monitor.getStatus();
+      },
+    },
+
+    // Configure context monitor
+    {
+      method: 'POST',
+      path: '/api/grade5/context-config',
+      handler: async (req) => {
+        const body = req.body as {
+          maxTokens?: number;
+          warningThreshold?: number;
+          criticalThreshold?: number;
+        };
+
+        const monitor = getContextMonitor();
+
+        if (body.maxTokens !== undefined) {
+          monitor.setMaxTokens(body.maxTokens);
+        }
+
+        if (body.warningThreshold !== undefined || body.criticalThreshold !== undefined) {
+          monitor.setThresholds({
+            warning: body.warningThreshold,
+            critical: body.criticalThreshold,
+          });
+        }
+
+        return monitor.getStatus();
+      },
+    },
+
+    // Get context history for time range
+    {
+      method: 'GET',
+      path: '/api/grade5/context-history',
+      handler: async (req) => {
+        const monitor = getContextMonitor();
+        const startTime = req.query.start ? new Date(req.query.start) : new Date(Date.now() - 3600000); // Default: last hour
+        const endTime = req.query.end ? new Date(req.query.end) : new Date();
+
+        return {
+          range: { start: startTime.toISOString(), end: endTime.toISOString() },
+          snapshots: monitor.getHistoryRange(startTime, endTime),
+        };
+      },
+    },
+
+    // Get active context alerts
+    {
+      method: 'GET',
+      path: '/api/grade5/context-alerts',
+      handler: async () => {
+        const monitor = getContextMonitor();
+        return {
+          alerts: monitor.getActiveAlerts(),
+          total: monitor.getStatus().alerts.length,
+        };
+      },
+    },
+
+    // Acknowledge an alert
+    {
+      method: 'POST',
+      path: '/api/grade5/context-alerts/:id/acknowledge',
+      handler: async (req) => {
+        const monitor = getContextMonitor();
+        const acknowledged = monitor.acknowledgeAlert(req.params.id);
+        return { success: acknowledged, alertId: req.params.id };
+      },
+    },
+
+    // Clear acknowledged alerts
+    {
+      method: 'DELETE',
+      path: '/api/grade5/context-alerts',
+      handler: async () => {
+        const monitor = getContextMonitor();
+        const cleared = monitor.clearAcknowledgedAlerts();
+        return { cleared };
+      },
+    },
+
+    // Get proactive flush status
+    {
+      method: 'GET',
+      path: '/api/grade5/proactive-flush',
+      handler: async () => {
+        const flushManager = getProactiveFlushManager();
+        return flushManager.getStats();
+      },
+    },
+
+    // Configure proactive flush
+    {
+      method: 'POST',
+      path: '/api/grade5/proactive-flush',
+      handler: async (req) => {
+        const body = req.body as {
+          enabled?: boolean;
+          threshold?: number;
+          debounceMs?: number;
+        };
+
+        const flushManager = getProactiveFlushManager();
+        flushManager.configure(body);
+
+        return flushManager.getStats();
+      },
+    },
+
+    // Trigger manual flush
+    {
+      method: 'POST',
+      path: '/api/grade5/proactive-flush/trigger',
+      handler: async (req) => {
+        const body = req.body as { contextRatio?: number };
+        const flushManager = getProactiveFlushManager();
+        const result = await flushManager.triggerManualFlush(body.contextRatio);
+
+        if (result.flushed) {
+          server.emitEvent('context:flush', result);
+        }
+
+        return result;
+      },
+    },
+
+    // Reset context monitor
+    {
+      method: 'POST',
+      path: '/api/grade5/context-reset',
+      handler: async () => {
+        const monitor = getContextMonitor();
+        monitor.reset();
+        server.emitEvent('context:reset', {});
         return { success: true };
       },
     },

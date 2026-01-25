@@ -5,7 +5,8 @@
 
 import { z } from 'zod';
 import { TitanMemory, initTitan } from '../titan.js';
-import { MemoryLayer, CompactionContext } from '../types.js';
+import { MemoryLayer, CompactionContext, RecallMode } from '../types.js';
+import { UtilitySignal } from '../utils/utility.js';
 
 // Tool input schemas using Zod for validation
 export const ToolSchemas = {
@@ -22,6 +23,8 @@ export const ToolSchemas = {
     layers: z.array(z.number()).optional().describe('Specific layers to query (2-5)'),
     projectId: z.string().optional().describe('Filter by project'),
     tags: z.array(z.string()).optional().describe('Filter by tags'),
+    mode: z.enum(['full', 'summary', 'metadata']).default('full').optional()
+      .describe('FR-2: Response mode - full (default), summary (100 chars + metadata), or metadata only'),
   }),
 
   titan_get: z.object({
@@ -52,6 +55,16 @@ export const ToolSchemas = {
   titan_prune: z.object({
     decayThreshold: z.number().default(0.05).optional().describe('Decay score threshold (0-1)'),
     dryRun: z.boolean().default(false).optional().describe('Preview without deleting'),
+    utilityThreshold: z.number().default(0.4).optional()
+      .describe('FR-1: Utility score threshold (0-1). Memories with utility below this are candidates for pruning'),
+  }),
+
+  // FR-1: Utility Tracking - Feedback tool
+  titan_feedback: z.object({
+    id: z.string().describe('Memory ID to provide feedback for'),
+    signal: z.enum(['helpful', 'harmful']).describe('Feedback signal - helpful if memory aided task, harmful if caused confusion'),
+    context: z.string().optional().describe('Optional context about why the memory was helpful/harmful'),
+    sessionId: z.string().optional().describe('Session ID for idempotency within session'),
   }),
 };
 
@@ -73,7 +86,7 @@ export const ToolDefinitions = [
   },
   {
     name: 'titan_recall',
-    description: 'Query memories across all layers with intelligent fusion. Returns fused results ranked by relevance.',
+    description: 'Query memories across all layers with intelligent fusion. Returns fused results ranked by relevance and utility score.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -82,6 +95,11 @@ export const ToolDefinitions = [
         layers: { type: 'array', items: { type: 'number' }, description: 'Specific layers to query (2-5)' },
         projectId: { type: 'string', description: 'Filter by project' },
         tags: { type: 'array', items: { type: 'string' }, description: 'Filter by tags' },
+        mode: {
+          type: 'string',
+          enum: ['full', 'summary', 'metadata'],
+          description: 'FR-2: Response mode - full (default), summary (100 chars + metadata), or metadata only for context efficiency',
+        },
       },
       required: ['query'],
     },
@@ -155,14 +173,29 @@ export const ToolDefinitions = [
   },
   {
     name: 'titan_prune',
-    description: 'Prune old/decayed memories to maintain performance. Uses adaptive forgetting with configurable threshold.',
+    description: 'Prune old/decayed memories to maintain performance. Uses adaptive forgetting with configurable threshold and utility-based pruning.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         decayThreshold: { type: 'number', description: 'Decay score threshold 0-1 (default: 0.05)' },
         dryRun: { type: 'boolean', description: 'Preview without deleting' },
+        utilityThreshold: { type: 'number', description: 'FR-1: Utility score threshold 0-1 (default: 0.4). Memories below this are pruning candidates.' },
       },
       required: [],
+    },
+  },
+  {
+    name: 'titan_feedback',
+    description: 'FR-1: Provide feedback on memory utility. Helpful feedback boosts recall ranking, harmful feedback makes memory a pruning candidate.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        id: { type: 'string', description: 'Memory ID to provide feedback for' },
+        signal: { type: 'string', enum: ['helpful', 'harmful'], description: 'Feedback signal' },
+        context: { type: 'string', description: 'Optional context about why helpful/harmful' },
+        sessionId: { type: 'string', description: 'Session ID for idempotency' },
+      },
+      required: ['id', 'signal'],
     },
   },
 ];
@@ -213,6 +246,7 @@ export class ToolHandler {
             layers: parsed.layers as MemoryLayer[] | undefined,
             projectId: parsed.projectId,
             tags: parsed.tags,
+            mode: parsed.mode as RecallMode | undefined,
           });
           break;
         }
@@ -274,11 +308,26 @@ export class ToolHandler {
             result = {
               dryRun: true,
               estimatedPrunable: Math.floor(stats.totalMemories * 0.1),
-              threshold: parsed.decayThreshold,
+              decayThreshold: parsed.decayThreshold,
+              utilityThreshold: parsed.utilityThreshold,
             };
           } else {
-            result = await titan.prune({ decayThreshold: parsed.decayThreshold });
+            result = await titan.prune({
+              decayThreshold: parsed.decayThreshold,
+              utilityThreshold: parsed.utilityThreshold,
+            });
           }
+          break;
+        }
+
+        case 'titan_feedback': {
+          const parsed = ToolSchemas.titan_feedback.parse(args);
+          result = await titan.recordFeedback(
+            parsed.id,
+            parsed.signal as UtilitySignal,
+            parsed.sessionId,
+            parsed.context
+          );
           break;
         }
 

@@ -125,6 +125,19 @@ program
 
       const result = await titan.recall(query, queryOptions);
 
+      // Handle progressive disclosure modes
+      if ('summaries' in result) {
+        console.log(`Found ${result.summaries.length} memories (${result.totalQueryTimeMs.toFixed(2)}ms)\n`);
+        for (const summary of result.summaries) {
+          console.log(`[${MemoryLayer[summary.layer]}] ${summary.id}`);
+          console.log(`  ${summary.summary}`);
+          console.log(`  Tokens: ~${summary.tokenEstimate}`);
+          console.log();
+        }
+        await titan.close();
+        return;
+      }
+
       console.log(`Found ${result.fusedMemories.length} memories (${result.totalQueryTimeMs.toFixed(2)}ms)\n`);
 
       for (const memory of result.fusedMemories) {
