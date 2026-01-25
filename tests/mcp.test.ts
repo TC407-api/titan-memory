@@ -1,0 +1,120 @@
+/**
+ * Titan Memory MCP Server Tests
+ */
+
+import { ToolHandler, ToolDefinitions } from '../src/mcp/tools';
+
+describe('MCP Tool Definitions', () => {
+  it('should have 9 tools defined', () => {
+    expect(ToolDefinitions).toHaveLength(9);
+  });
+
+  it('should have correct tool names', () => {
+    const toolNames = ToolDefinitions.map(t => t.name);
+    expect(toolNames).toContain('titan_add');
+    expect(toolNames).toContain('titan_recall');
+    expect(toolNames).toContain('titan_get');
+    expect(toolNames).toContain('titan_delete');
+    expect(toolNames).toContain('titan_stats');
+    expect(toolNames).toContain('titan_flush');
+    expect(toolNames).toContain('titan_curate');
+    expect(toolNames).toContain('titan_today');
+    expect(toolNames).toContain('titan_prune');
+  });
+
+  it('should have required fields in tool definitions', () => {
+    for (const tool of ToolDefinitions) {
+      expect(tool).toHaveProperty('name');
+      expect(tool).toHaveProperty('description');
+      expect(tool).toHaveProperty('inputSchema');
+      expect(tool.inputSchema).toHaveProperty('type', 'object');
+      expect(tool.inputSchema).toHaveProperty('properties');
+      expect(tool.inputSchema).toHaveProperty('required');
+    }
+  });
+
+  it('titan_add should require content', () => {
+    const addTool = ToolDefinitions.find(t => t.name === 'titan_add');
+    expect(addTool?.inputSchema.required).toContain('content');
+  });
+
+  it('titan_recall should require query', () => {
+    const recallTool = ToolDefinitions.find(t => t.name === 'titan_recall');
+    expect(recallTool?.inputSchema.required).toContain('query');
+  });
+});
+
+describe('ToolHandler', () => {
+  let handler: ToolHandler;
+
+  beforeEach(() => {
+    handler = new ToolHandler();
+  });
+
+  afterEach(async () => {
+    await handler.close();
+  });
+
+  it('should handle unknown tool gracefully', async () => {
+    const result = await handler.handleToolCall('unknown_tool', {});
+    expect(result.content[0].text).toContain('Unknown tool');
+  });
+
+  it('should handle titan_stats', async () => {
+    const result = await handler.handleToolCall('titan_stats', {});
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed).toHaveProperty('totalMemories');
+    expect(parsed).toHaveProperty('byLayer');
+  });
+
+  it('should handle titan_add with content', async () => {
+    const result = await handler.handleToolCall('titan_add', {
+      content: 'Test memory from MCP',
+      tags: ['test', 'mcp'],
+    });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed).toHaveProperty('id');
+    expect(parsed).toHaveProperty('content', 'Test memory from MCP');
+  });
+
+  it('should handle titan_recall with query', async () => {
+    // First add a memory
+    await handler.handleToolCall('titan_add', {
+      content: 'MCP recall test memory',
+    });
+
+    const result = await handler.handleToolCall('titan_recall', {
+      query: 'MCP recall test',
+      limit: 5,
+    });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed).toHaveProperty('fusedMemories');
+    expect(parsed).toHaveProperty('totalQueryTimeMs');
+  });
+
+  it('should handle titan_today', async () => {
+    const result = await handler.handleToolCall('titan_today', {});
+    const parsed = JSON.parse(result.content[0].text);
+    expect(Array.isArray(parsed)).toBe(true);
+  });
+
+  it('should handle titan_prune with dryRun', async () => {
+    const result = await handler.handleToolCall('titan_prune', {
+      dryRun: true,
+    });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed).toHaveProperty('dryRun', true);
+  });
+
+  it('should handle validation errors', async () => {
+    const result = await handler.handleToolCall('titan_add', {});
+    expect(result.content[0].text).toContain('Error');
+  });
+
+  it('should handle titan_get for non-existent memory', async () => {
+    const result = await handler.handleToolCall('titan_get', {
+      id: 'non-existent-id',
+    });
+    expect(result.content[0].text).toContain('Memory not found');
+  });
+});

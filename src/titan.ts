@@ -1,6 +1,9 @@
 /**
  * TitanMemory - Unified Cognitive Memory Manager
  * Orchestrates all 5 memory layers with intelligent routing
+ *
+ * Phase 3: Integrates Knowledge Graph, Decision Traces, World Models,
+ * Behavioral Validation, and Adaptive Memory systems.
  */
 
 import {
@@ -22,6 +25,13 @@ import {
 import { loadConfig, ensureDirectories } from './utils/config.js';
 import { scoreImportance, calculatePatternBoost } from './utils/surprise.js';
 
+// Phase 3 imports
+import { KnowledgeGraph, ExtractionResult, GraphQueryResult } from './graph/knowledge-graph.js';
+import { DecisionTraceManager, DecisionTrace, DecisionQueryResult } from './trace/decision-trace.js';
+import { WorldModel, MetaNode, WorldState, AggregationResult } from './world/world-model.js';
+import { BehavioralValidator, ValidationReport, QualityScore } from './validation/behavioral-validator.js';
+import { AdaptiveMemory, FusionResult } from './adaptive/adaptive-memory.js';
+
 /**
  * Gating decisions for intelligent routing
  */
@@ -39,6 +49,13 @@ export class TitanMemory {
   private layers: Map<MemoryLayer, BaseMemoryLayer>;
   private initialized: boolean = false;
 
+  // Phase 3: Cognitive Enhancement Systems
+  private knowledgeGraph: KnowledgeGraph;
+  private decisionTracer: DecisionTraceManager;
+  private worldModel: WorldModel;
+  private validator: BehavioralValidator;
+  private adaptiveMemory: AdaptiveMemory;
+
   constructor(configPath?: string) {
     loadConfig(configPath);
     ensureDirectories();
@@ -54,19 +71,33 @@ export class TitanMemory {
       [MemoryLayer.SEMANTIC, this.semanticLayer as BaseMemoryLayer],
       [MemoryLayer.EPISODIC, this.episodicLayer as BaseMemoryLayer],
     ]);
+
+    // Phase 3: Initialize cognitive systems
+    this.knowledgeGraph = new KnowledgeGraph();
+    this.decisionTracer = new DecisionTraceManager();
+    this.worldModel = new WorldModel();
+    this.validator = new BehavioralValidator();
+    this.adaptiveMemory = new AdaptiveMemory();
   }
 
   /**
-   * Initialize all memory layers
+   * Initialize all memory layers and Phase 3 systems
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
     await Promise.all([
+      // Core layers
       this.factualLayer.initialize(),
       this.longTermLayer.initialize(),
       this.semanticLayer.initialize(),
       this.episodicLayer.initialize(),
+      // Phase 3 systems
+      this.knowledgeGraph.initialize(),
+      this.decisionTracer.initialize(),
+      this.worldModel.initialize(),
+      this.validator.initialize(),
+      this.adaptiveMemory.initialize(),
     ]);
 
     this.initialized = true;
@@ -168,7 +199,7 @@ export class TitanMemory {
   }
 
   /**
-   * Add a memory (with intelligent routing)
+   * Add a memory (with intelligent routing and Phase 3 processing)
    */
   async add(
     content: string,
@@ -177,11 +208,27 @@ export class TitanMemory {
     if (!this.initialized) await this.initialize();
 
     const decision = this.gateStore(content);
+
+    // Phase 3: Get context inheritance from world model
+    const activeContext = this.worldModel.getWorldState().activeContext;
+    const inheritance = await this.worldModel.getContextInheritance(activeContext);
+    const inheritedTags = inheritance?.inheritedTags || [];
+
     const entry = {
       content,
       timestamp: new Date(),
-      metadata: { ...metadata, routingReason: decision.reason },
+      metadata: {
+        ...metadata,
+        routingReason: decision.reason,
+        tags: [...(metadata?.tags || []), ...inheritedTags],
+      },
     };
+
+    // Phase 3: Validate before storing
+    const validation = await this.validator.validateBeforeStore(entry as MemoryEntry);
+    if (!validation.valid) {
+      console.warn('Memory validation issues:', validation.issues.map(i => i.description));
+    }
 
     // Store in primary layer
     const layer = this.layers.get(decision.priority)!;
@@ -198,7 +245,38 @@ export class TitanMemory {
       }
     }
 
+    // Phase 3: Post-storage processing (async, non-blocking)
+    this.processPostStore(result, content).catch(() => {});
+
     return result;
+  }
+
+  /**
+   * Phase 3: Process after storage (entity extraction, context linking)
+   */
+  private async processPostStore(memory: MemoryEntry, content: string): Promise<void> {
+    try {
+      // Extract entities and relationships
+      await this.knowledgeGraph.extract(content, memory.id);
+
+      // Extract decision traces if present
+      await this.decisionTracer.extractFromContent(content, {
+        projectId: memory.metadata?.projectId as string,
+        sessionId: memory.metadata?.sessionId as string,
+      });
+
+      // Detect and link to relevant contexts
+      const contexts = await this.worldModel.detectContext(content);
+      for (const context of contexts.slice(0, 3)) {
+        await this.worldModel.linkMemory(context.id, memory.id, memory.layer);
+      }
+
+      // Record memory activity
+      await this.worldModel.recordMemoryActivity(memory.id);
+    } catch (error) {
+      // Non-critical, log and continue
+      console.warn('Post-store processing error:', error);
+    }
   }
 
   /**
@@ -224,7 +302,7 @@ export class TitanMemory {
   }
 
   /**
-   * Query memories (with intelligent routing and fusion)
+   * Query memories (with intelligent routing, fusion, and Phase 3 enhancements)
    */
   async recall(query: string, options?: QueryOptions): Promise<UnifiedQueryResult> {
     if (!this.initialized) await this.initialize();
@@ -246,7 +324,19 @@ export class TitanMemory {
     );
 
     // Fuse results with priority weighting
-    const fusedMemories = this.fuseResults(results, decision.priority, limit);
+    let fusedMemories = this.fuseResults(results, decision.priority, limit);
+
+    // Phase 3: Prioritize using adaptive memory
+    fusedMemories = await this.adaptiveMemory.prioritizeForRecall(
+      fusedMemories,
+      query,
+      limit
+    );
+
+    // Phase 3: Record access for each returned memory
+    for (const memory of fusedMemories) {
+      await this.adaptiveMemory.recordAccess(memory.id, query);
+    }
 
     const totalQueryTimeMs = performance.now() - startTime;
 
@@ -493,11 +583,335 @@ export class TitanMemory {
   }
 
   /**
-   * Close all layers
+   * Close all layers and Phase 3 systems
    */
   async close(): Promise<void> {
-    await Promise.all([...this.layers.values()].map(l => l.close()));
+    await Promise.all([
+      // Core layers
+      ...[...this.layers.values()].map(l => l.close()),
+      // Phase 3 systems
+      this.knowledgeGraph.close(),
+      this.decisionTracer.close(),
+      this.worldModel.close(),
+      this.validator.close(),
+      this.adaptiveMemory.close(),
+    ]);
     this.initialized = false;
+  }
+
+  // ==================== Phase 3 API Methods ====================
+
+  // --- Knowledge Graph ---
+
+  /**
+   * Extract entities and relationships from content
+   */
+  async extractGraph(content: string): Promise<ExtractionResult> {
+    if (!this.initialized) await this.initialize();
+    return this.knowledgeGraph.extract(content);
+  }
+
+  /**
+   * Query the knowledge graph
+   */
+  async queryGraph(entityNames: string[], options?: {
+    maxDepth?: number;
+    minStrength?: number;
+  }): Promise<GraphQueryResult> {
+    if (!this.initialized) await this.initialize();
+    return this.knowledgeGraph.query(entityNames, options);
+  }
+
+  /**
+   * Get knowledge graph statistics
+   */
+  async getGraphStats(): Promise<{
+    entityCount: number;
+    relationshipCount: number;
+    avgConnections: number;
+  }> {
+    if (!this.initialized) await this.initialize();
+    return this.knowledgeGraph.getStats();
+  }
+
+  // --- Decision Traces ---
+
+  /**
+   * Create a decision trace
+   */
+  async traceDecision(params: {
+    type: DecisionTrace['type'];
+    summary: string;
+    description: string;
+    rationale: string;
+    alternatives?: Array<{
+      description: string;
+      pros?: string[];
+      cons?: string[];
+    }>;
+    confidence?: number;
+    tags?: string[];
+  }): Promise<DecisionTrace> {
+    if (!this.initialized) await this.initialize();
+    return this.decisionTracer.createDecision(params);
+  }
+
+  /**
+   * Record outcome for a decision
+   */
+  async recordDecisionOutcome(decisionId: string, outcome: {
+    status: 'success' | 'partial' | 'failure';
+    description?: string;
+    feedback?: string;
+  }): Promise<DecisionTrace | null> {
+    if (!this.initialized) await this.initialize();
+    return this.decisionTracer.recordOutcome(decisionId, outcome);
+  }
+
+  /**
+   * Query decisions
+   */
+  async queryDecisions(options?: {
+    type?: DecisionTrace['type'];
+    outcomeStatus?: 'pending' | 'success' | 'failure';
+    limit?: number;
+  }): Promise<DecisionQueryResult> {
+    if (!this.initialized) await this.initialize();
+    return this.decisionTracer.query(options);
+  }
+
+  /**
+   * Find similar past decisions
+   */
+  async findSimilarDecisions(summary: string, limit?: number): Promise<DecisionTrace[]> {
+    if (!this.initialized) await this.initialize();
+    return this.decisionTracer.findSimilar(summary, { limit });
+  }
+
+  // --- World Model ---
+
+  /**
+   * Create a context (project, session, domain, etc.)
+   */
+  async createContext(params: {
+    type: MetaNode['type'];
+    name: string;
+    description?: string;
+    parentId?: string;
+  }): Promise<MetaNode> {
+    if (!this.initialized) await this.initialize();
+    return this.worldModel.createNode(params);
+  }
+
+  /**
+   * Get or create a context by name
+   */
+  async getOrCreateContext(
+    type: MetaNode['type'],
+    name: string
+  ): Promise<MetaNode> {
+    if (!this.initialized) await this.initialize();
+    return this.worldModel.getOrCreate(type, name);
+  }
+
+  /**
+   * Set active context for memory operations
+   */
+  async setActiveContext(contextIds: string[]): Promise<void> {
+    if (!this.initialized) await this.initialize();
+    await this.worldModel.setActiveContext(contextIds);
+  }
+
+  /**
+   * Get current world state
+   */
+  getWorldState(): WorldState {
+    return this.worldModel.getWorldState();
+  }
+
+  /**
+   * Aggregate insights for a context
+   */
+  async aggregateContext(contextId: string): Promise<AggregationResult> {
+    if (!this.initialized) await this.initialize();
+    const memoryIds = await this.worldModel.getMemoriesForNode(contextId);
+    const memories: MemoryEntry[] = [];
+
+    for (const id of memoryIds) {
+      const memory = await this.get(id);
+      if (memory) memories.push(memory);
+    }
+
+    return this.worldModel.aggregate(contextId, memories);
+  }
+
+  // --- Behavioral Validation ---
+
+  /**
+   * Run full validation on all memories
+   */
+  async validate(): Promise<ValidationReport> {
+    if (!this.initialized) await this.initialize();
+
+    // Collect all memories
+    const memories: MemoryEntry[] = [];
+    for (const layer of this.layers.values()) {
+      const result = await layer.query('', { limit: 1000 });
+      memories.push(...result.memories);
+    }
+
+    return this.validator.runFullValidation(memories);
+  }
+
+  /**
+   * Get quality score for a memory
+   */
+  getQualityScore(memory: MemoryEntry): QualityScore {
+    return this.validator.calculateQualityScore(memory);
+  }
+
+  /**
+   * Get open validation issues
+   */
+  async getValidationIssues(severity?: 'critical' | 'warning' | 'info'): Promise<{
+    issues: Array<{
+      id: string;
+      type: string;
+      severity: string;
+      description: string;
+    }>;
+  }> {
+    if (!this.initialized) await this.initialize();
+    const issues = await this.validator.getOpenIssues(severity);
+    return {
+      issues: issues.map(i => ({
+        id: i.id,
+        type: i.type,
+        severity: i.severity,
+        description: i.description,
+      })),
+    };
+  }
+
+  // --- Adaptive Memory ---
+
+  /**
+   * Consolidate similar memories
+   */
+  async consolidate(): Promise<{
+    consolidated: number;
+    mergedIds: string[][];
+  }> {
+    if (!this.initialized) await this.initialize();
+
+    // Get all memories
+    const memories: MemoryEntry[] = [];
+    for (const layer of this.layers.values()) {
+      const result = await layer.query('', { limit: 500 });
+      memories.push(...result.memories);
+    }
+
+    // Find consolidation candidates
+    const candidates = await this.adaptiveMemory.findConsolidationCandidates(memories);
+    const mergedIds: string[][] = [];
+
+    // Consolidate top candidates
+    for (const candidate of candidates.slice(0, 10)) {
+      await this.adaptiveMemory.consolidate(candidate.memory1, candidate.memory2);
+      mergedIds.push([candidate.memory1.id, candidate.memory2.id]);
+    }
+
+    return {
+      consolidated: mergedIds.length,
+      mergedIds,
+    };
+  }
+
+  /**
+   * Fuse memories into coherent response
+   */
+  async fuseMemories(
+    memoryIds: string[],
+    strategy?: 'merge' | 'summarize' | 'extract'
+  ): Promise<FusionResult> {
+    if (!this.initialized) await this.initialize();
+
+    const memories: MemoryEntry[] = [];
+    for (const id of memoryIds) {
+      const memory = await this.get(id);
+      if (memory) memories.push(memory);
+    }
+
+    return this.adaptiveMemory.fuse(memories, strategy);
+  }
+
+  /**
+   * Cluster related memories
+   */
+  async clusterMemories(): Promise<{
+    clusters: Array<{
+      id: string;
+      memoryCount: number;
+      avgImportance: number;
+      commonTags: string[];
+    }>;
+  }> {
+    if (!this.initialized) await this.initialize();
+
+    // Get all memories
+    const memories: MemoryEntry[] = [];
+    for (const layer of this.layers.values()) {
+      const result = await layer.query('', { limit: 500 });
+      memories.push(...result.memories);
+    }
+
+    const clusters = await this.adaptiveMemory.clusterMemories(memories);
+
+    return {
+      clusters: clusters.map(c => ({
+        id: c.id,
+        memoryCount: c.memoryIds.length,
+        avgImportance: c.avgImportance,
+        commonTags: c.commonTags,
+      })),
+    };
+  }
+
+  /**
+   * Get adaptive memory statistics
+   */
+  async getAdaptiveStats(): Promise<{
+    totalConsolidations: number;
+    clusterCount: number;
+    avgImportance: number;
+  }> {
+    if (!this.initialized) await this.initialize();
+    return this.adaptiveMemory.getStats();
+  }
+
+  // --- Combined Phase 3 Stats ---
+
+  /**
+   * Get comprehensive Phase 3 statistics
+   */
+  async getPhase3Stats(): Promise<{
+    graph: Awaited<ReturnType<KnowledgeGraph['getStats']>>;
+    decisions: Awaited<ReturnType<DecisionTraceManager['getStats']>>;
+    world: Awaited<ReturnType<WorldModel['getStats']>>;
+    validation: Awaited<ReturnType<BehavioralValidator['getStats']>>;
+    adaptive: Awaited<ReturnType<AdaptiveMemory['getStats']>>;
+  }> {
+    if (!this.initialized) await this.initialize();
+
+    const [graph, decisions, world, validation, adaptive] = await Promise.all([
+      this.knowledgeGraph.getStats(),
+      this.decisionTracer.getStats(),
+      this.worldModel.getStats(),
+      this.validator.getStats(),
+      this.adaptiveMemory.getStats(),
+    ]);
+
+    return { graph, decisions, world, validation, adaptive };
   }
 }
 

@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "titan": "./dist/cli/index.js"
+    "titan": "./dist/cli/index.js",
+    "titan-mcp": "./bin/titan-mcp.js"
   },
   "scripts": {
     "build": "tsc",
@@ -29,9 +30,11 @@
   "author": "Travi",
   "license": "Apache-2.0",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "commander": "^12.0.0",
     "dotenv": "^16.4.0",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "zod": "^3.22.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.0",

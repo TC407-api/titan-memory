@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "titan-memory": {
+      "command": "node",
+      "args": ["C:/Users/Travi/.claude/titan-memory/bin/titan-mcp.js"],
+      "env": {}
+    }
+  }
+}

@@ -6,9 +6,24 @@
  * - Titans/MIRAS (surprise-based storage)
  * - Hope/Nested Learning (continual learning)
  * - Clawdbot (episodic memory patterns)
+ *
+ * Phase 3 Enhancements:
+ * - Knowledge Graph (entity-relationship extraction)
+ * - Decision Traces (structured decision logging)
+ * - World Models (meta-node abstractions)
+ * - Behavioral Validation (consistency checking)
+ * - Adaptive Memory (intelligent consolidation)
  */
 
 export * from './types.js';
 export * from './titan.js';
 export * from './layers/index.js';
 export * from './utils/index.js';
+export * from './mcp/index.js';
+
+// Phase 3: Enhanced Cognitive Features
+export * from './graph/knowledge-graph.js';
+export * from './trace/decision-trace.js';
+export * from './world/world-model.js';
+export * from './validation/behavioral-validator.js';
+export * from './adaptive/adaptive-memory.js';
