@@ -31,3 +31,6 @@ export * from './learning/continual-learner.js';
 
 // Phase 4: A2A Protocol Support (Multi-Agent Coordination)
 export * from './a2a/index.js';
+
+// Phase 5: Web Dashboard
+export * from './dashboard/index.js';

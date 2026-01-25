@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Titan Memory Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+  <!-- Chart.js for statistics charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- vis-network for knowledge graph -->
+  <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/vis-network.min.js"></script>
+</head>
+<body>
+  <div class="dashboard">
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+      <div class="logo">
+        <h1>Titan</h1>
+        <span class="version">Memory v1.0</span>
+      </div>
+
+      <ul class="nav-links">
+        <li><a href="#" class="nav-link active" data-page="overview">Overview</a></li>
+        <li><a href="#" class="nav-link" data-page="graph">Knowledge Graph</a></li>
+        <li><a href="#" class="nav-link" data-page="decisions">Decisions</a></li>
+        <li><a href="#" class="nav-link" data-page="learning">Learning</a></li>
+        <li><a href="#" class="nav-link" data-page="search">Search</a></li>
+        <li><a href="#" class="nav-link" data-page="projects">Projects</a></li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <div class="connection-status" id="connectionStatus">
+          <span class="status-dot"></span>
+          <span class="status-text">Connecting...</span>
+        </div>
+        <div class="project-badge" id="projectBadge">default</div>
+      </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Overview Page -->
+      <section class="page active" id="page-overview">
+        <header class="page-header">
+          <h2>Memory Overview</h2>
+          <div class="header-actions">
+            <button class="btn btn-secondary" id="refreshStats">Refresh</button>
+            <button class="btn btn-primary" id="exportBtn">Export</button>
+          </div>
+        </header>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-info">
+              <span class="stat-value" id="totalMemories">-</span>
+              <span class="stat-label">Total Memories</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🧠</div>
+            <div class="stat-info">
+              <span class="stat-value" id="entityCount">-</span>
+              <span class="stat-label">Entities</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🔗</div>
+            <div class="stat-info">
+              <span class="stat-value" id="relationCount">-</span>
+              <span class="stat-label">Relationships</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">📝</div>
+            <div class="stat-info">
+              <span class="stat-value" id="decisionCount">-</span>
+              <span class="stat-label">Decisions</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="charts-row">
+          <div class="chart-container">
+            <h3>Memory Distribution by Layer</h3>
+            <canvas id="layerChart"></canvas>
+          </div>
+          <div class="chart-container">
+            <h3>Pattern Lifecycle Stages</h3>
+            <canvas id="lifecycleChart"></canvas>
+          </div>
+        </div>
+
+        <div class="info-panels">
+          <div class="panel">
+            <h3>Today's Activity</h3>
+            <div class="panel-content" id="todayActivity">
+              <p class="loading">Loading...</p>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>Health Status</h3>
+            <div class="panel-content" id="healthStatus">
+              <p class="loading">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Knowledge Graph Page -->
+      <section class="page" id="page-graph">
+        <header class="page-header">
+          <h2>Knowledge Graph</h2>
+          <div class="header-actions">
+            <input type="text" id="graphSearch" class="search-input" placeholder="Search entities...">
+            <button class="btn btn-primary" id="graphSearchBtn">Search</button>
+          </div>
+        </header>
+
+        <div class="graph-stats">
+          <span><strong>Entities:</strong> <span id="graphEntityCount">0</span></span>
+          <span><strong>Relationships:</strong> <span id="graphRelationCount">0</span></span>
+          <span><strong>Avg Connections:</strong> <span id="graphAvgConnections">0</span></span>
+        </div>
+
+        <div class="graph-container">
+          <div id="graphCanvas"></div>
+        </div>
+
+        <div class="graph-controls">
+          <button class="btn btn-secondary" id="graphZoomIn">Zoom In</button>
+          <button class="btn btn-secondary" id="graphZoomOut">Zoom Out</button>
+          <button class="btn btn-secondary" id="graphFit">Fit</button>
+          <button class="btn btn-secondary" id="graphStabilize">Stabilize</button>
+        </div>
+      </section>
+
+      <!-- Decisions Page -->
+      <section class="page" id="page-decisions">
+        <header class="page-header">
+          <h2>Decision History</h2>
+          <div class="header-actions">
+            <select id="decisionTypeFilter" class="select-input">
+              <option value="">All Types</option>
+              <option value="architecture">Architecture</option>
+              <option value="implementation">Implementation</option>
+              <option value="debugging">Debugging</option>
+              <option value="technology">Technology</option>
+              <option value="optimization">Optimization</option>
+            </select>
+            <select id="decisionStatusFilter" class="select-input">
+              <option value="">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="success">Success</option>
+              <option value="failure">Failure</option>
+            </select>
+          </div>
+        </header>
+
+        <div class="decision-timeline" id="decisionTimeline">
+          <p class="loading">Loading decisions...</p>
+        </div>
+      </section>
+
+      <!-- Learning Page -->
+      <section class="page" id="page-learning">
+        <header class="page-header">
+          <h2>Continual Learning</h2>
+          <div class="header-actions">
+            <button class="btn btn-secondary" id="runRehearsals">Run Rehearsals</button>
+            <button class="btn btn-secondary" id="checkForgetting">Check Forgetting Risk</button>
+          </div>
+        </header>
+
+        <div class="learning-stats">
+          <div class="stat-card small">
+            <span class="stat-label">Total Patterns</span>
+            <span class="stat-value" id="patternCount">-</span>
+          </div>
+          <div class="stat-card small">
+            <span class="stat-label">Plasticity Avg</span>
+            <span class="stat-value" id="avgPlasticity">-</span>
+          </div>
+          <div class="stat-card small">
+            <span class="stat-label">Stability Avg</span>
+            <span class="stat-value" id="avgStability">-</span>
+          </div>
+          <div class="stat-card small">
+            <span class="stat-label">Pending Rehearsals</span>
+            <span class="stat-value" id="pendingRehearsals">-</span>
+          </div>
+        </div>
+
+        <div class="charts-row">
+          <div class="chart-container">
+            <h3>Pattern Maturity Distribution</h3>
+            <canvas id="maturityChart"></canvas>
+          </div>
+          <div class="chart-container">
+            <h3>Learning Activity</h3>
+            <canvas id="learningActivityChart"></canvas>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Forgetting Risk Assessment</h3>
+          <div class="panel-content" id="forgettingRisk">
+            <p class="loading">Click "Check Forgetting Risk" to analyze...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Search Page -->
+      <section class="page" id="page-search">
+        <header class="page-header">
+          <h2>Memory Search</h2>
+        </header>
+
+        <div class="search-container">
+          <div class="search-form">
+            <input type="text" id="searchQuery" class="search-input large" placeholder="Enter your search query...">
+            <div class="search-filters">
+              <label>
+                <input type="checkbox" class="layer-filter" value="2"> Factual
+              </label>
+              <label>
+                <input type="checkbox" class="layer-filter" value="3"> Long-Term
+              </label>
+              <label>
+                <input type="checkbox" class="layer-filter" value="4"> Semantic
+              </label>
+              <label>
+                <input type="checkbox" class="layer-filter" value="5"> Episodic
+              </label>
+            </div>
+            <div class="search-options">
+              <label>
+                Limit: <input type="number" id="searchLimit" value="10" min="1" max="100">
+              </label>
+              <button class="btn btn-primary" id="searchBtn">Search</button>
+            </div>
+          </div>
+
+          <div class="search-results" id="searchResults">
+            <p class="placeholder">Enter a query to search memories</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Projects Page -->
+      <section class="page" id="page-projects">
+        <header class="page-header">
+          <h2>Project Management</h2>
+          <div class="header-actions">
+            <button class="btn btn-secondary" id="refreshProjects">Refresh</button>
+          </div>
+        </header>
+
+        <div class="projects-container">
+          <div class="active-project-info">
+            <h3>Active Project</h3>
+            <div class="project-card active" id="activeProjectCard">
+              <span class="project-name">default</span>
+              <span class="project-badge">Current</span>
+            </div>
+          </div>
+
+          <div class="projects-list">
+            <h3>All Projects</h3>
+            <div id="projectsList">
+              <p class="loading">Loading projects...</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Toast notification container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Add Memory Modal -->
+  <div class="modal" id="addMemoryModal">
+    <div class="modal-content">
+      <h3>Add Memory</h3>
+      <textarea id="memoryContent" placeholder="Enter memory content..."></textarea>
+      <div class="modal-options">
+        <select id="memoryLayer">
+          <option value="">Auto-route</option>
+          <option value="2">Factual</option>
+          <option value="3">Long-Term</option>
+          <option value="4">Semantic</option>
+          <option value="5">Episodic</option>
+        </select>
+        <input type="text" id="memoryTags" placeholder="Tags (comma-separated)">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="cancelAddMemory">Cancel</button>
+        <button class="btn btn-primary" id="confirmAddMemory">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating action button -->
+  <button class="fab" id="addMemoryBtn" title="Add Memory">+</button>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -6,16 +6,19 @@
   "types": "dist/index.d.ts",
   "bin": {
     "titan": "./dist/cli/index.js",
-    "titan-mcp": "./bin/titan-mcp.js"
+    "titan-mcp": "./bin/titan-mcp.js",
+    "titan-dashboard": "./bin/titan-dashboard.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-static",
+    "copy-static": "node -e \"const fs=require('fs');const p=require('path');const s='src/dashboard/static';const d='dist/dashboard/static';fs.mkdirSync(d,{recursive:true});fs.readdirSync(s).forEach(f=>fs.copyFileSync(p.join(s,f),p.join(d,f)));console.log('Static files copied')\"",
     "dev": "tsc --watch",
     "test": "jest",
     "test:coverage": "jest --coverage",
     "lint": "eslint src --ext .ts",
     "start": "node dist/index.js",
-    "titan": "node dist/cli/index.js"
+    "titan": "node dist/cli/index.js",
+    "dashboard": "node bin/titan-dashboard.js"
   },
   "keywords": [
     "ai",
