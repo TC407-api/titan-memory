@@ -16,6 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getConfig } from '../utils/config.js';
+import { contentSimilarity } from '../utils/similarity.js';
 import { MemoryEntry, MemoryLayer } from '../types.js';
 
 // Validation issue severity
@@ -671,17 +672,9 @@ export class BehavioralValidator {
     return duplicates;
   }
 
+  // Using centralized contentSimilarity from utils/similarity.ts
   private calculateSimilarity(content1: string, content2: string): number {
-    if (!content1 || !content2) return 0;
-
-    // Simple Jaccard similarity on tokens
-    const tokens1 = new Set(content1.toLowerCase().split(/\s+/));
-    const tokens2 = new Set(content2.toLowerCase().split(/\s+/));
-
-    const intersection = [...tokens1].filter(t => tokens2.has(t)).length;
-    const union = new Set([...tokens1, ...tokens2]).size;
-
-    return union > 0 ? intersection / union : 0;
+    return contentSimilarity(content1, content2);
   }
 
   // ==================== Self-Healing ====================

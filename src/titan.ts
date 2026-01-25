@@ -279,6 +279,20 @@ export class TitanMemory {
     content: string,
     metadata?: Partial<MemoryEntry['metadata']>
   ): Promise<MemoryEntry> {
+    // Input validation
+    if (typeof content !== 'string') {
+      throw new Error('Content must be a string');
+    }
+    if (content.trim().length === 0) {
+      throw new Error('Content cannot be empty');
+    }
+    if (content.length > 100000) {
+      throw new Error('Content exceeds maximum length of 100,000 characters');
+    }
+    if (metadata !== undefined && metadata !== null && typeof metadata !== 'object') {
+      throw new Error('Metadata must be an object or undefined');
+    }
+
     if (!this.initialized) await this.initialize();
 
     const decision = this.gateStore(content);
@@ -320,7 +334,12 @@ export class TitanMemory {
     }
 
     // Phase 3: Post-storage processing (async, non-blocking)
-    this.processPostStore(result, content).catch(() => {});
+    this.processPostStore(result, content).catch(error => {
+      console.error('Post-store processing failed:', {
+        memoryId: result.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
 
     return result;
   }
@@ -458,8 +477,8 @@ export class TitanMemory {
     const fused: MemoryEntry[] = [];
 
     for (const { memory } of allMemories) {
-      // Simple deduplication by content hash
-      const contentKey = memory.content.substring(0, 100).toLowerCase();
+      // Use full content hash for deduplication to avoid collision on documents with same prefix
+      const contentKey = this.hashContent(memory.content);
       if (!seen.has(contentKey)) {
         seen.add(contentKey);
         fused.push(memory);
@@ -468,6 +487,21 @@ export class TitanMemory {
     }
 
     return fused;
+  }
+
+  /**
+   * Generate a hash for content deduplication
+   * Uses a simple but effective string hashing algorithm
+   */
+  private hashContent(content: string): string {
+    let hash = 0;
+    for (let i = 0; i < content.length; i++) {
+      const char = content.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    // Include length to further reduce collisions
+    return `${hash.toString(36)}_${content.length}`;
   }
 
   /**

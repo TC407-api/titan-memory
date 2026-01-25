@@ -34,6 +34,7 @@ export class EpisodicMemoryLayer extends BaseMemoryLayer {
   private logs: Map<string, DailyLog> = new Map(); // date string -> log
   private curatedMemory: string[] = []; // Lines from MEMORY.md
   private indexedContent: Map<string, string[]> = new Map(); // id -> LSH sigs
+  private idIndex: Map<string, { date: string; entryIndex: number }> = new Map(); // O(1) id lookup
   private episodicDir: string;
   private memoryMdPath: string;
 
@@ -86,9 +87,11 @@ export class EpisodicMemoryLayer extends BaseMemoryLayer {
 
           this.logs.set(date, log);
 
-          // Index entries
-          for (const entry of log.entries) {
+          // Index entries for search and O(1) id lookup
+          for (let i = 0; i < log.entries.length; i++) {
+            const entry = log.entries[i];
             this.indexedContent.set(entry.id, lshHash(entry.content));
+            this.idIndex.set(entry.id, { date, entryIndex: i });
           }
         } catch (error) {
           console.warn(`Failed to load log ${file}:`, error);
@@ -175,8 +178,9 @@ Edit this file to add or remove curated memories.
 
     log.entries.push(episode);
 
-    // Index for search
+    // Index for search and O(1) id lookup
     this.indexedContent.set(id, lshHash(entry.content));
+    this.idIndex.set(id, { date, entryIndex: log.entries.length - 1 });
 
     // Save to disk
     await this.saveLog(date);
@@ -478,10 +482,12 @@ Edit this file to add or remove curated memories.
       return null;
     }
 
-    // Search through all logs
-    for (const log of this.logs.values()) {
-      const entry = log.entries.find(e => e.id === id);
-      if (entry) {
+    // Use O(1) index lookup instead of linear search through all logs
+    const indexEntry = this.idIndex.get(id);
+    if (indexEntry) {
+      const log = this.logs.get(indexEntry.date);
+      if (log && log.entries[indexEntry.entryIndex]?.id === id) {
+        const entry = log.entries[indexEntry.entryIndex];
         return {
           id: entry.id,
           content: entry.content,
@@ -503,15 +509,41 @@ Edit this file to add or remove curated memories.
   }
 
   async delete(id: string): Promise<boolean> {
-    for (const [date, log] of this.logs) {
-      const idx = log.entries.findIndex(e => e.id === id);
-      if (idx !== -1) {
-        log.entries.splice(idx, 1);
-        this.indexedContent.delete(id);
-        await this.saveLog(date);
-        return true;
-      }
+    // Use O(1) index lookup to find the entry
+    const indexEntry = this.idIndex.get(id);
+    if (!indexEntry) {
+      return false;
     }
+
+    const log = this.logs.get(indexEntry.date);
+    if (!log) {
+      // Clean up stale index entry
+      this.idIndex.delete(id);
+      this.indexedContent.delete(id);
+      return false;
+    }
+
+    const idx = indexEntry.entryIndex;
+    if (idx >= 0 && idx < log.entries.length && log.entries[idx]?.id === id) {
+      // Remove the entry
+      log.entries.splice(idx, 1);
+
+      // Clean up indexes for this entry
+      this.indexedContent.delete(id);
+      this.idIndex.delete(id);
+
+      // Update indices of all entries that shifted
+      for (let i = idx; i < log.entries.length; i++) {
+        const shiftedEntry = log.entries[i];
+        this.idIndex.set(shiftedEntry.id, { date: indexEntry.date, entryIndex: i });
+      }
+
+      await this.saveLog(indexEntry.date);
+      return true;
+    }
+
+    // Index was stale, clean it up
+    this.idIndex.delete(id);
     return false;
   }
 
@@ -538,6 +570,7 @@ Edit this file to add or remove curated memories.
     this.logs.clear();
     this.curatedMemory = [];
     this.indexedContent.clear();
+    this.idIndex.clear(); // Clear the O(1) id index
     this.initialized = false;
   }
 }

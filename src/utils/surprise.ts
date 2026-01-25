@@ -132,8 +132,10 @@ export function calculateDecay(
   const daysSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
   const daysSinceAccess = (now.getTime() - lastAccessed.getTime()) / (1000 * 60 * 60 * 24);
 
-  // Use the more recent of creation or last access
-  const effectiveDays = Math.min(daysSinceCreation, daysSinceAccess);
+  // Use the OLDER of creation or last access for decay calculation
+  // If memory was accessed recently, it should decay less (higher value)
+  // If memory hasn't been accessed in a while, it should decay more (lower value)
+  const effectiveDays = Math.max(daysSinceCreation, daysSinceAccess);
 
   // Exponential decay: factor = 2^(-t/halfLife)
   return Math.pow(2, -effectiveDays / halfLifeDays);

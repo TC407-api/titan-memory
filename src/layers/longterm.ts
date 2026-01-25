@@ -18,7 +18,11 @@ interface VectorSearchResult {
 }
 
 export class LongTermMemoryLayer extends BaseMemoryLayer {
-  private recentSurprises: number[] = [];
+  // Use circular buffer for O(1) momentum calculation instead of array shift O(n)
+  private readonly SURPRISE_BUFFER_SIZE = 100;
+  private recentSurprises: Float64Array = new Float64Array(this.SURPRISE_BUFFER_SIZE);
+  private surpriseIndex: number = 0;
+  private surpriseCount: number = 0;
   private memoryCache: Map<string, MemoryEntry> = new Map();
   private zillizClient: ZillizClient | null = null;
 
@@ -61,10 +65,11 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
       config.surpriseThreshold
     );
 
-    // Track surprise for momentum calculation
-    this.recentSurprises.push(surpriseResult.score);
-    if (this.recentSurprises.length > 100) {
-      this.recentSurprises.shift();
+    // Track surprise for momentum calculation using O(1) circular buffer
+    this.recentSurprises[this.surpriseIndex] = surpriseResult.score;
+    this.surpriseIndex = (this.surpriseIndex + 1) % this.SURPRISE_BUFFER_SIZE;
+    if (this.surpriseCount < this.SURPRISE_BUFFER_SIZE) {
+      this.surpriseCount++;
     }
 
     // Check if we should store (surprise filtering)
@@ -85,7 +90,7 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
     }
 
     const id = uuidv4();
-    const momentum = calculateMomentum(this.recentSurprises);
+    const momentum = calculateMomentum(this.getRecentSurprisesArray());
 
     const memoryEntry: MemoryEntry = {
       id,
@@ -179,10 +184,19 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
   async get(id: string): Promise<MemoryEntry | null> {
     // Check cache first
     if (this.memoryCache.has(id)) {
-      const memory = this.memoryCache.get(id)!;
-      // Update last accessed
-      memory.metadata.lastAccessed = new Date().toISOString();
-      return memory;
+      const cached = this.memoryCache.get(id)!;
+      // Create a clone to avoid mutating the cached version during read
+      // Update lastAccessed on the cache entry (not the returned clone)
+      cached.metadata = {
+        ...cached.metadata,
+        lastAccessed: new Date().toISOString(),
+      };
+      // Return a deep clone to prevent external mutations
+      return {
+        ...cached,
+        timestamp: new Date(cached.timestamp.getTime()),
+        metadata: { ...cached.metadata },
+      };
     }
 
     if (this.zillizClient) {
@@ -268,12 +282,35 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
    * Get current momentum (used for context capture)
    */
   getCurrentMomentum(): number {
-    return calculateMomentum(this.recentSurprises);
+    return calculateMomentum(this.getRecentSurprisesArray());
+  }
+
+  /**
+   * Convert circular buffer to array for momentum calculation
+   * Returns surprises in chronological order (oldest to newest)
+   */
+  private getRecentSurprisesArray(): number[] {
+    if (this.surpriseCount === 0) return [];
+
+    const result: number[] = [];
+    const start = this.surpriseCount < this.SURPRISE_BUFFER_SIZE
+      ? 0
+      : this.surpriseIndex;
+
+    for (let i = 0; i < this.surpriseCount; i++) {
+      const idx = (start + i) % this.SURPRISE_BUFFER_SIZE;
+      result.push(this.recentSurprises[idx]);
+    }
+
+    return result;
   }
 
   async close(): Promise<void> {
     this.memoryCache.clear();
-    this.recentSurprises = [];
+    // Reset circular buffer
+    this.recentSurprises = new Float64Array(this.SURPRISE_BUFFER_SIZE);
+    this.surpriseIndex = 0;
+    this.surpriseCount = 0;
     if (this.zillizClient) {
       await this.zillizClient.close();
     }
