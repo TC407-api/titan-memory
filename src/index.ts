@@ -34,3 +34,6 @@ export * from './a2a/index.js';
 
 // Phase 5: Web Dashboard
 export * from './dashboard/index.js';
+
+// Phase 6: Hot-Reload Skill System
+export * from './skills/index.js';
