@@ -17,6 +17,7 @@ import {
   isAllowedOrigin,
   type AuthConfig,
 } from '../utils/auth.js';
+import { applySecurityHeaders, type SecurityConfig } from './middleware/security.js';
 
 export interface DashboardConfig {
   port: number;
@@ -25,6 +26,8 @@ export interface DashboardConfig {
   corsOrigins?: string[];
   /** Authentication configuration */
   auth?: Partial<AuthConfig>;
+  /** Security headers configuration */
+  security?: Partial<SecurityConfig>;
 }
 
 export class DashboardServer {
@@ -123,6 +126,10 @@ export class DashboardServer {
     const pathname = url.pathname;
     const origin = req.headers.origin;
     const authConfig = getAuthConfig();
+    const host = req.headers.host || 'localhost';
+
+    // Apply security headers (CSP, X-Frame-Options, etc.)
+    applySecurityHeaders(res, this.config.security, host);
 
     // Set CORS headers - validate origin against whitelist
     const allowedOrigin = isAllowedOrigin(origin, this.config.corsOrigins || [])

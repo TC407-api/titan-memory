@@ -400,39 +400,65 @@ Edit this file to add or remove curated memories.
 
   /**
    * Add to curated MEMORY.md
+   * Includes duplicate detection to prevent repeated entries
    */
   async addToCurated(content: string, section?: string): Promise<void> {
     let memoryMd = fs.readFileSync(this.memoryMdPath, 'utf-8');
 
-    if (section) {
-      // Find section and append
-      const sectionRegex = new RegExp(`(## ${section}[^#]*)`, 's');
-      const match = memoryMd.match(sectionRegex);
-      if (match) {
-        memoryMd = memoryMd.replace(
-          sectionRegex,
-          `$1\n- ${content}`
-        );
-      } else {
-        // Add new section
-        memoryMd += `\n## ${section}\n\n- ${content}\n`;
-      }
-    } else {
-      // Append to Notes section
-      const notesRegex = /(## Notes[^#]*)/s;
-      const match = memoryMd.match(notesRegex);
-      if (match) {
-        memoryMd = memoryMd.replace(
-          notesRegex,
-          `$1\n- ${content}`
-        );
-      } else {
-        memoryMd += `\n- ${content}\n`;
+    // Duplicate detection: check if this exact content already exists
+    const normalizedContent = content.trim().toLowerCase();
+    const existingLines = memoryMd.split('\n');
+    const isDuplicate = existingLines.some(line => {
+      const trimmed = line.replace(/^-\s*/, '').trim().toLowerCase();
+      return trimmed === normalizedContent;
+    });
+
+    if (isDuplicate) {
+      // Already exists, skip adding
+      return;
+    }
+
+    const targetSection = section || 'Notes';
+
+    // Find section by splitting on headers
+    const lines = memoryMd.split('\n');
+    let sectionStartIdx = -1;
+    let sectionEndIdx = lines.length;
+
+    // Find the target section and the next section
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith(`## ${targetSection}`)) {
+        sectionStartIdx = i;
+      } else if (sectionStartIdx >= 0 && lines[i].startsWith('## ')) {
+        sectionEndIdx = i;
+        break;
       }
     }
 
+    if (sectionStartIdx >= 0) {
+      // Find the last non-empty line in the section (excluding trailing blank lines)
+      let insertIdx = sectionStartIdx + 1;
+      for (let i = sectionEndIdx - 1; i > sectionStartIdx; i--) {
+        if (lines[i].trim()) {
+          insertIdx = i + 1;
+          break;
+        }
+      }
+
+      // Insert the new entry
+      lines.splice(insertIdx, 0, `- ${content}`);
+      memoryMd = lines.join('\n');
+    } else {
+      // Add new section at the end
+      memoryMd = memoryMd.trimEnd() + `\n\n## ${targetSection}\n\n- ${content}\n`;
+    }
+
     fs.writeFileSync(this.memoryMdPath, memoryMd);
-    this.curatedMemory.push(content);
+
+    // Only add to in-memory cache if not already there
+    if (!this.curatedMemory.includes(content)) {
+      this.curatedMemory.push(content);
+    }
   }
 
   /**

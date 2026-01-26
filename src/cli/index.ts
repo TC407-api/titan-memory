@@ -440,4 +440,48 @@ program
     }
   });
 
+// Feedback command - FR-1: Utility tracking
+program
+  .command('feedback <id>')
+  .description('Provide feedback on memory utility (helpful/harmful)')
+  .requiredOption('-s, --signal <signal>', 'Feedback signal: helpful or harmful')
+  .option('-c, --context <context>', 'Context explaining why helpful/harmful')
+  .option('--session <session>', 'Session ID for idempotency')
+  .option('--json', 'Output as JSON')
+  .action(async (id: string, options) => {
+    try {
+      const signal = options.signal.toLowerCase();
+      if (signal !== 'helpful' && signal !== 'harmful') {
+        console.error('Signal must be "helpful" or "harmful"');
+        process.exit(1);
+      }
+
+      const titan = await initTitan();
+      const result = await titan.recordFeedback(
+        id,
+        signal as 'helpful' | 'harmful',
+        options.session,
+        options.context
+      );
+
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        if (result.success) {
+          console.log(`Feedback recorded: ${result.signal} for memory ${result.memoryId}`);
+          if (result.newUtilityScore !== undefined) {
+            console.log(`New utility score: ${result.newUtilityScore.toFixed(2)}`);
+          }
+        } else {
+          console.log(`Feedback not recorded: ${result.message}`);
+        }
+      }
+
+      await titan.close();
+    } catch (error) {
+      console.error('Error:', error);
+      process.exit(1);
+    }
+  });
+
 program.parse();
