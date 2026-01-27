@@ -21,7 +21,7 @@ describe('Storage Module', () => {
     });
 
     it('should create generator with default dimension', () => {
-      expect(generator.getDimension()).toBe(1536);
+      expect(generator.getDimension()).toBe(1024);
     });
 
     it('should create generator with custom dimension', () => {
@@ -31,7 +31,7 @@ describe('Storage Module', () => {
 
     it('should generate embedding of correct length', async () => {
       const embedding = await generator.generateEmbedding('test content');
-      expect(embedding.length).toBe(1536);
+      expect(embedding.length).toBe(1024);
     });
 
     it('should generate deterministic embeddings', async () => {
@@ -48,12 +48,12 @@ describe('Storage Module', () => {
 
     it('should handle empty string', async () => {
       const embedding = await generator.generateEmbedding('');
-      expect(embedding.length).toBe(1536);
+      expect(embedding.length).toBe(1024);
     });
 
     it('should handle unicode content', async () => {
       const embedding = await generator.generateEmbedding('Unicode 你好 αβγ 🚀');
-      expect(embedding.length).toBe(1536);
+      expect(embedding.length).toBe(1024);
     });
 
     it('should generate embeddings with values in reasonable range', async () => {
@@ -234,11 +234,11 @@ describe('Storage Module', () => {
     it('should define required methods', () => {
       const mockGenerator: IEmbeddingGenerator = {
         generateEmbedding: jest.fn(),
-        getDimension: jest.fn().mockReturnValue(1536),
+        getDimension: jest.fn().mockReturnValue(1024),
       };
 
       expect(mockGenerator.generateEmbedding).toBeDefined();
-      expect(mockGenerator.getDimension()).toBe(1536);
+      expect(mockGenerator.getDimension()).toBe(1024);
     });
   });
 });

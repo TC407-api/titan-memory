@@ -15,8 +15,8 @@ export interface VoyageEmbeddingConfig {
 
 const DEFAULT_CONFIG: Required<VoyageEmbeddingConfig> = {
   apiKey: process.env.VOYAGE_API_KEY || '',
-  model: 'voyage-3-lite',
-  dimension: 1024, // voyage-3-lite default
+  model: 'voyage-4-lite',  // Best balance of quality, latency, and cost
+  dimension: 1024, // voyage-4-lite default (all voyage-4 series use 1024)
   timeout: 30000,
   batchSize: 32,
 };
@@ -102,13 +102,30 @@ export class VoyageEmbeddingGenerator implements IEmbeddingGenerator {
   }
 
   getDimension(): number {
-    // Voyage model dimensions
+    // Voyage model dimensions (from https://docs.voyageai.com/docs/embeddings)
+    // voyage-4 series (recommended): all default to 1024, support 256/512/1024/2048
+    // voyage-3 series (legacy): voyage-3 is 1024, voyage-3-lite is 512
     const modelDimensions: Record<string, number> = {
-      'voyage-3-lite': 1024,
+      // Current recommended models (voyage-4 series)
+      'voyage-4-large': 1024,    // Best retrieval quality
+      'voyage-4': 1024,          // Optimized general-purpose
+      'voyage-4-lite': 1024,     // Optimized for latency/cost
+      'voyage-4-nano': 1024,     // Open-weight model
+      // Domain-specific models
+      'voyage-code-3': 1024,     // Code retrieval (best for code)
+      'voyage-finance-2': 1024,  // Finance domain
+      'voyage-law-2': 1024,      // Legal domain
+      // Legacy models (still supported but recommend migrating)
+      'voyage-3-large': 1024,
+      'voyage-3.5': 1024,
+      'voyage-3.5-lite': 1024,
       'voyage-3': 1024,
-      'voyage-2': 1024,
+      'voyage-3-lite': 512,      // NOTE: 512 not 1024!
+      'voyage-multilingual-2': 1024,
+      'voyage-large-2-instruct': 1024,
       'voyage-large-2': 1536,
       'voyage-code-2': 1536,
+      'voyage-2': 1024,
     };
     return modelDimensions[this.config.model] || this.config.dimension;
   }

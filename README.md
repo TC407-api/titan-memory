@@ -175,7 +175,8 @@ MIRAS (Memory with Intelligent Retrieval and Adaptive Storage) brings 7 advanced
 {
   "embedding": {
     "provider": "voyage",
-    "model": "voyage-3-lite",
+    "model": "voyage-4-lite",
+    "dimension": 1024,
     "cacheSize": 10000
   },
   "semanticHighlight": {

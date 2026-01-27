@@ -437,9 +437,9 @@ export interface PatternMatchResult {
  */
 export interface EmbeddingConfig {
   provider: EmbeddingProvider;           // default: 'hash'
-  model?: string;                        // default: 'voyage-3-lite' for voyage
+  model?: string;                        // default: 'voyage-4-lite' for voyage (best quality/cost)
   apiKey?: string;                       // or VOYAGE_API_KEY env
-  dimension?: number;                    // default: 1536
+  dimension?: number;                    // default: 1024 (voyage-4 series)
   cacheSize?: number;                    // default: 10000
   batchSize?: number;                    // default: 32
   timeout?: number;                      // default: 30000ms

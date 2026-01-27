@@ -41,7 +41,8 @@ const DEFAULT_CONFIG: TitanConfig = {
   // MIRAS Enhancement Configurations (all defaults to OFF for backward compatibility)
   embedding: {
     provider: 'hash',              // Safe default - no external API needed
-    dimension: 1536,
+    model: 'voyage-4-lite',        // Best balance of quality/latency/cost when using 'voyage' provider
+    dimension: 1024,               // voyage-4 series uses 1024 (hash provider will use this dimension)
     cacheSize: 10000,
     batchSize: 32,
     timeout: 30000,

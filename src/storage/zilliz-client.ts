@@ -20,7 +20,7 @@ import {
 export class DefaultEmbeddingGenerator implements IEmbeddingGenerator {
   private readonly dimension: number;
 
-  constructor(dimension: number = 1536) {
+  constructor(dimension: number = 1024) { // Match voyage-4 series default
     this.dimension = dimension;
   }
 
@@ -59,7 +59,7 @@ export class ZillizClient implements IVectorStorage {
     this.uri = config.uri;
     this.token = config.token;
     this.collection = config.collection;
-    this.dimension = config.dimension ?? 1536;
+    this.dimension = config.dimension ?? 1024; // voyage-4 series default
     this.metricType = config.metricType ?? 'COSINE';
     this.embeddingGenerator = embeddingGenerator ?? new DefaultEmbeddingGenerator(this.dimension);
   }

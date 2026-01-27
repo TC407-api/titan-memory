@@ -43,7 +43,7 @@ export function createEmbeddingGenerator(config: EmbeddingConfig): IEmbeddingGen
 
     case 'hash':
     default:
-      generator = new DefaultEmbeddingGenerator(config.dimension ?? 1536);
+      generator = new DefaultEmbeddingGenerator(config.dimension ?? 1024);
       break;
   }
 
