@@ -12,13 +12,14 @@
   <a href="#features">Features</a> •
   <a href="#installation">Installation</a> •
   <a href="#mcp-server">MCP Server</a> •
+  <a href="#miras-enhancements">MIRAS</a> •
   <a href="#cli-usage">CLI</a> •
   <a href="#phase-3-advanced-features">Phase 3</a>
 </p>
 
 ---
 
-Combines breakthrough research (Engram, Titans, Hope, Clawdbot, Cognee, Mem0) into a production-ready 5-layer cognitive architecture with knowledge graphs, decision tracing, and adaptive memory.
+Combines breakthrough research (Engram, Titans, Hope, Clawdbot, Cognee, Mem0, MIRAS) into a production-ready 5-layer cognitive architecture with knowledge graphs, decision tracing, semantic embeddings, and adaptive memory.
 
 ## Features
 
@@ -29,12 +30,26 @@ Combines breakthrough research (Engram, Titans, Hope, Clawdbot, Cognee, Mem0) in
 - **Continuous learning** - Without catastrophic forgetting
 - **Cross-session memory** - Persistent episodic memory
 
+### MIRAS Enhancement System (NEW)
+- **Semantic Embeddings** - Voyage AI / local embeddings with LRU caching
+- **Semantic Highlighting** - Query-relevant sentence extraction for RAG precision
+- **Data-Dependent Decay** - Content-type aware memory aging
+- **Auto Context Capture** - Momentum-triggered context preservation
+- **Auto-Consolidation** - Merge similar memories automatically
+- **Proactive Suggestions** - Context-aware memory recommendations
+- **Cross-Project Learning** - Pattern transfer between projects
+
 ### Phase 3: Best-in-Class Enhancements
 - **Knowledge Graph** - Entity extraction, relationship inference, graph traversal
 - **Decision Traces** - Capture decisions with rationale, alternatives, and outcomes
 - **World Models** - Meta nodes for projects, contexts, domains with inheritance
 - **Behavioral Validation** - Quality scoring, anomaly detection, consistency checking
 - **Adaptive Memory** - Consolidation, fusion, dynamic importance scoring
+
+### OAuth/Token MCP Server
+- **Auth0 Integration** - JWT verification with JWKS caching
+- **Scope-based Authorization** - Read/write/admin tool permissions
+- **HTTP Server Mode** - OAuth2 discovery endpoint for enterprise deployment
 
 ## 5-Layer Architecture
 
@@ -54,6 +69,7 @@ Combines breakthrough research (Engram, Titans, Hope, Clawdbot, Cognee, Mem0) in
 │ • Surprise-based selective storage                             │
 │ • Momentum for related context capture                         │
 │ • Adaptive forgetting for old memories                         │
+│ • Semantic embeddings for similarity (NEW)                     │
 ├────────────────────────────────────────────────────────────────┤
 │ LAYER 2: FACTUAL MEMORY (Engram-inspired)                      │
 │ • O(1) N-gram hash lookup tables                               │
@@ -108,6 +124,10 @@ claude mcp add titan-memory -s user -- node "C:/Users/Travi/.claude/titan-memory
 | `titan_curate` | Add to MEMORY.md |
 | `titan_today` | Get today's episodic entries |
 | `titan_prune` | Prune decayed memories |
+| `titan_feedback` | FR-1: Utility tracking (helpful/harmful) |
+| `titan_suggest` | MIRAS: Get proactive memory suggestions |
+| `titan_patterns` | MIRAS: Find cross-project patterns |
+| `titan_miras_stats` | MIRAS: Get enhancement statistics |
 
 ### Example MCP Calls
 
@@ -118,12 +138,111 @@ claude mcp add titan-memory -s user -- node "C:/Users/Travi/.claude/titan-memory
 // Recall memories
 {"name": "titan_recall", "arguments": {"query": "database connection issues", "limit": 5}}
 
+// Get proactive suggestions (MIRAS)
+{"name": "titan_suggest", "arguments": {"context": "working on database optimization", "limit": 5}}
+
+// Find cross-project patterns (MIRAS)
+{"name": "titan_patterns", "arguments": {"query": "authentication patterns", "domain": "backend"}}
+
 // Get statistics
 {"name": "titan_stats", "arguments": {}}
 
 // Pre-compaction flush
 {"name": "titan_flush", "arguments": {"insights": ["Discovered race condition"], "solutions": ["Added mutex locks"]}}
 ```
+
+## MIRAS Enhancements
+
+MIRAS (Memory with Intelligent Retrieval and Adaptive Storage) brings 7 advanced features to Titan Memory. All features default to OFF for backward compatibility.
+
+### Feature Overview
+
+| Feature | Default | Purpose |
+|---------|---------|---------|
+| Semantic Embeddings | `hash` | Use Voyage AI or local embeddings for similarity |
+| Semantic Highlighting | `off` | Extract query-relevant sentences from memories |
+| Semantic Surprise | `lsh` | Use embeddings for novelty detection |
+| Data-Dependent Decay | `time-only` | Content-type aware memory aging |
+| Auto Context Capture | `off` | Momentum-triggered context preservation |
+| Auto-Consolidation | `off` | Merge highly similar memories |
+| Proactive Suggestions | `off` | Context-aware memory recommendations |
+| Cross-Project Learning | `off` | Pattern transfer between projects |
+
+### Enable MIRAS Features
+
+```json
+// config.json
+{
+  "embedding": {
+    "provider": "voyage",
+    "model": "voyage-3-lite",
+    "cacheSize": 10000
+  },
+  "semanticHighlight": {
+    "enabled": true,
+    "threshold": 0.5,
+    "highlightOnRecall": true
+  },
+  "semanticSurprise": {
+    "algorithm": "semantic",
+    "similarityThreshold": 0.7
+  },
+  "dataDependentDecay": {
+    "strategy": "data-dependent"
+  },
+  "proactiveSuggestions": {
+    "enabled": true,
+    "maxSuggestions": 5
+  },
+  "crossProject": {
+    "enabled": true,
+    "minApplicability": 0.7
+  }
+}
+```
+
+### Programmatic MIRAS API
+
+```typescript
+import { TitanMemory, initTitan } from '@titan-memory/core';
+
+const titan = await initTitan();
+
+// Get proactive suggestions based on context
+const suggestions = await titan.suggest('working on database optimization');
+// Returns: [{ memory, relevance, reason, tags }, ...]
+
+// Find cross-project patterns
+const patterns = await titan.findRelevantPatterns('authentication patterns');
+// Returns: [{ pattern, relevance, matchedTerms }, ...]
+
+// Highlight relevant portions of memories
+const highlighted = await titan.highlightMemories('error handling', memories);
+// Returns memories with highlightedContent and compressionRate
+
+// Calculate semantic surprise
+const surprise = await titan.calculateSurprise('new content', recentMemories);
+// Returns: { score, shouldStore }
+
+// Calculate data-dependent decay
+const decayFactor = titan.calculateDecay(memory);
+
+// Get MIRAS statistics
+const mirasStats = await titan.getMirasStats();
+// Returns: { embeddingEnabled, highlightingEnabled, crossProjectStats, ... }
+```
+
+### Content-Type Decay Half-Lives
+
+| Content Type | Half-Life (days) | Rationale |
+|--------------|------------------|-----------|
+| `decision` | 365 | Long-lived, important for future context |
+| `architecture` | 365 | Structural decisions persist |
+| `preference` | 300 | User preferences remain relevant |
+| `solution` | 270 | Solutions stay useful |
+| `learning` | 180 | Learnings need periodic refresh |
+| `general` | 180 | Default for unclassified content |
+| `error` | 90 | Errors get fixed, less relevant over time |
 
 ## CLI Usage
 
@@ -212,7 +331,21 @@ Create `~/.claude/titan-memory/config.json`:
   "enablePreCompactionFlush": true,
   "enableSurpriseFiltering": true,
   "enableContinualLearning": true,
-  "offlineMode": false
+  "offlineMode": false,
+
+  "embedding": {
+    "provider": "hash",
+    "cacheSize": 10000
+  },
+  "semanticHighlight": {
+    "enabled": false
+  },
+  "proactiveSuggestions": {
+    "enabled": false
+  },
+  "crossProject": {
+    "enabled": false
+  }
 }
 ```
 
@@ -221,6 +354,7 @@ Create `~/.claude/titan-memory/config.json`:
 ```bash
 ZILLIZ_URI=your-zilliz-uri
 ZILLIZ_TOKEN=your-zilliz-token
+VOYAGE_API_KEY=your-voyage-api-key
 TITAN_SURPRISE_THRESHOLD=0.3
 TITAN_OFFLINE_MODE=false
 ```
@@ -241,6 +375,8 @@ Where:
 Store if: Surprise Score >= threshold (default 0.3)
 ```
 
+With MIRAS semantic surprise enabled, similarity uses embedding cosine similarity instead of LSH.
+
 ### Intelligent Routing
 
 The system automatically routes memories to the appropriate layer:
@@ -252,10 +388,17 @@ The system automatically routes memories to the appropriate layer:
 
 ### Memory Decay
 
-Memories decay over time unless accessed:
+With MIRAS data-dependent decay:
 
 ```
-Decay Factor = 2^(-days / halfLife)
+Effective Half-Life = Base Half-Life × Utility Multiplier × Access Multiplier
+
+Where:
+- Base Half-Life = content-type dependent (90-365 days)
+- Utility Multiplier = 0.5 + (utilityScore × 1.0)
+- Access Multiplier = 1 + min(0.5, accessCount × 0.05)
+
+Decay Factor = 2^(-days / Effective Half-Life)
 ```
 
 Heavily decayed memories are pruned during maintenance.
@@ -367,14 +510,47 @@ const prioritized = await titan.prioritizedRecall('database optimization');
 | `titan_validate` | Validate memory quality |
 | `titan_consolidate` | Consolidate similar memories |
 
+## OAuth/Token MCP Server
+
+For enterprise deployments, Titan Memory supports OAuth2 authentication via Auth0.
+
+### HTTP Server Mode
+
+```bash
+# Start HTTP server with OAuth
+node bin/titan-mcp.js --http --port 3456
+
+# Environment variables
+AUTH0_DOMAIN=your-tenant.auth0.com
+AUTH0_AUDIENCE=https://titan-memory.example.com
+AUTH0_CLIENT_ID=your-client-id
+```
+
+### Scopes
+
+| Scope | Permissions |
+|-------|-------------|
+| `titan:read` | Query, get, stats, today |
+| `titan:write` | Add, delete, flush, curate, prune |
+| `titan:admin` | All operations + configuration |
+
+### OAuth2 Discovery
+
+```bash
+curl http://localhost:3456/.well-known/oauth-authorization-server
+```
+
 ## Research Sources
 
 1. **DeepSeek Engram** - O(1) N-gram hash lookup for factual memory
-2. **Google Titans/MIRAS** - Surprise-based selective storage with momentum
-3. **Google Hope/Nested Learning** - Multi-frequency continual learning
-4. **Clawdbot** - Practical episodic memory patterns
-5. **Cognee** - Knowledge graphs and decision traces
-6. **Mem0** - Adaptive memory with consolidation
+2. **Google Titans** - Surprise-based selective storage with momentum
+3. **MIRAS** - Memory with Intelligent Retrieval and Adaptive Storage
+4. **Google Hope/Nested Learning** - Multi-frequency continual learning
+5. **Clawdbot** - Practical episodic memory patterns
+6. **Cognee** - Knowledge graphs and decision traces
+7. **Mem0** - Adaptive memory with consolidation
+8. **Voyage AI** - State-of-the-art embedding models
+9. **Auth0** - OAuth2/OIDC authentication and JWKS token verification
 
 ## License
 
