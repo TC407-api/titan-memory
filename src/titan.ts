@@ -558,17 +558,25 @@ export class TitanMemory {
   }
 
   /**
-   * Delete a memory
+   * Delete a memory from ALL layers (memories may exist in multiple layers)
    */
   async delete(id: string): Promise<boolean> {
     if (!this.initialized) await this.initialize();
 
+    let deletedFromAny = false;
+
+    // Delete from ALL layers since memories can be stored in multiple layers
     for (const layer of this.layers.values()) {
-      const deleted = await layer.delete(id);
-      if (deleted) return true;
+      try {
+        const deleted = await layer.delete(id);
+        if (deleted) deletedFromAny = true;
+      } catch (error) {
+        // Log but continue - try to delete from all layers
+        console.error(`Delete failed in layer: ${error}`);
+      }
     }
 
-    return false;
+    return deletedFromAny;
   }
 
   /**

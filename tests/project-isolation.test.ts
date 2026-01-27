@@ -24,6 +24,7 @@ import { TitanMemory, initTitanForProject } from '../src/titan';
 describe('Project Isolation', () => {
   let testBaseDir: string;
   let originalEnv: NodeJS.ProcessEnv;
+  const createdProjects: string[] = []; // Track created projects for cleanup
 
   beforeAll(() => {
     // Create a unique test directory
@@ -52,9 +53,35 @@ describe('Project Isolation', () => {
       // Ignore cleanup errors
     }
 
+    // Cleanup any test projects created in the real data directory
+    const realProjectsDir = path.join(
+      process.platform === 'win32'
+        ? (originalEnv.USERPROFILE || '')
+        : (originalEnv.HOME || ''),
+      '.claude', 'titan-memory', 'data', 'projects'
+    );
+
+    for (const projectId of createdProjects) {
+      try {
+        const projectDir = path.join(realProjectsDir, projectId);
+        if (fs.existsSync(projectDir)) {
+          fs.rmSync(projectDir, { recursive: true, force: true });
+        }
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+
     // Restore original environment
     process.env = originalEnv;
   });
+
+  // Helper to track created projects for cleanup
+  const trackProject = (projectId: string) => {
+    if (!createdProjects.includes(projectId)) {
+      createdProjects.push(projectId);
+    }
+  };
 
   describe('getProjectDataDir', () => {
     it('should return base data dir for undefined projectId', () => {
@@ -117,6 +144,7 @@ describe('Project Isolation', () => {
   describe('ensureProjectDirectories', () => {
     it('should create directories for a new project', () => {
       const projectId = `test-ensure-${Date.now()}`;
+      trackProject(projectId);
       ensureProjectDirectories(projectId);
 
       const paths = getProjectPaths(projectId);
@@ -128,6 +156,7 @@ describe('Project Isolation', () => {
 
     it('should not fail if directories already exist', () => {
       const projectId = `test-ensure-twice-${Date.now()}`;
+      trackProject(projectId);
       ensureProjectDirectories(projectId);
       expect(() => ensureProjectDirectories(projectId)).not.toThrow();
     });
@@ -163,6 +192,7 @@ describe('Project Isolation', () => {
 
     it('should list created projects', () => {
       const projectId = `list-test-${Date.now()}`;
+      trackProject(projectId);
       ensureProjectDirectories(projectId);
 
       const projects = listProjects();
@@ -177,6 +207,10 @@ describe('Project Isolation', () => {
     const projectB = `project-b-${Date.now()}`;
 
     beforeAll(async () => {
+      // Track projects for cleanup
+      trackProject(projectA);
+      trackProject(projectB);
+
       // Set offline mode to avoid Zilliz connection
       process.env.TITAN_OFFLINE_MODE = 'true';
       loadConfig();
@@ -247,13 +281,18 @@ describe('Project Isolation', () => {
     });
 
     it('should switch projects with setActiveProject', async () => {
-      const titan = new TitanMemory(undefined, projectA);
+      const switchProjectA = `switch-project-a-${Date.now()}`;
+      const switchProjectB = `switch-project-b-${Date.now()}`;
+      trackProject(switchProjectA);
+      trackProject(switchProjectB);
+
+      const titan = new TitanMemory(undefined, switchProjectA);
       await titan.initialize();
 
-      expect(titan.getActiveProject()).toBe(projectA);
+      expect(titan.getActiveProject()).toBe(switchProjectA);
 
-      await titan.setActiveProject(projectB);
-      expect(titan.getActiveProject()).toBe(projectB);
+      await titan.setActiveProject(switchProjectB);
+      expect(titan.getActiveProject()).toBe(switchProjectB);
 
       await titan.close();
     });
@@ -305,6 +344,7 @@ describe('Project Isolation', () => {
   describe('File Structure Verification', () => {
     it('should match target architecture for project data', async () => {
       const projectId = `arch-test-${Date.now()}`;
+      trackProject(projectId);
       const titan = await initTitanForProject(projectId);
 
       // Add data to trigger file creation

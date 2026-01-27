@@ -40,11 +40,20 @@ const DEFAULT_CONFIG: TitanConfig = {
 };
 
 let currentConfig: TitanConfig = { ...DEFAULT_CONFIG };
+let configLoaded = false;
 
 /**
  * Load configuration from file and environment
+ * Idempotent - only loads once unless a specific configPath is provided
+ * Preserves any manual overrides from updateConfig()
  */
 export function loadConfig(configPath?: string): TitanConfig {
+  // If already loaded and no specific path requested, preserve existing config
+  // This prevents TitanMemory constructor from resetting test isolation overrides
+  if (configLoaded && !configPath) {
+    return currentConfig;
+  }
+
   const defaultPath = path.join(
     process.env.HOME || process.env.USERPROFILE || '',
     '.claude',
@@ -52,6 +61,9 @@ export function loadConfig(configPath?: string): TitanConfig {
     'config.json'
   );
   const filePath = configPath || defaultPath;
+
+  // Preserve any manual overrides before resetting
+  const manualOverrides = configLoaded ? { ...currentConfig } : {};
 
   // Start with defaults
   currentConfig = { ...DEFAULT_CONFIG };
@@ -81,6 +93,12 @@ export function loadConfig(configPath?: string): TitanConfig {
     currentConfig.offlineMode = true;
   }
 
+  // Re-apply any manual overrides (important for test isolation)
+  if (Object.keys(manualOverrides).length > 0) {
+    currentConfig = { ...currentConfig, ...manualOverrides };
+  }
+
+  configLoaded = true;
   return currentConfig;
 }
 
@@ -92,11 +110,20 @@ export function getConfig(): TitanConfig {
 }
 
 /**
- * Update configuration
+ * Update configuration (marks config as loaded to prevent reset)
  */
 export function updateConfig(updates: Partial<TitanConfig>): TitanConfig {
   currentConfig = { ...currentConfig, ...updates };
+  configLoaded = true; // Prevent loadConfig() from resetting these overrides
   return currentConfig;
+}
+
+/**
+ * Reset configuration to defaults (for testing)
+ */
+export function resetConfig(): void {
+  currentConfig = { ...DEFAULT_CONFIG };
+  configLoaded = false;
 }
 
 /**
@@ -148,12 +175,8 @@ export function ensureDirectories(): void {
  * @returns Path to the project's data directory
  */
 export function getProjectDataDir(projectId?: string): string {
-  const baseDir = path.join(
-    process.env.HOME || process.env.USERPROFILE || '',
-    '.claude',
-    'titan-memory',
-    'data'
-  );
+  // Use configured dataDir (respects updateConfig for test isolation)
+  const baseDir = currentConfig.dataDir;
 
   if (!projectId || projectId === 'default') {
     return baseDir;

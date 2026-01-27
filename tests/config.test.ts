@@ -12,6 +12,7 @@ import {
   saveConfig,
   validateConfig,
   ensureDirectories,
+  resetConfig,
 } from '../src/utils/config';
 
 describe('Configuration', () => {
@@ -30,6 +31,8 @@ describe('Configuration', () => {
   });
 
   beforeEach(() => {
+    // Reset config state for test isolation
+    resetConfig();
     // Reset environment
     delete process.env.ZILLIZ_URI;
     delete process.env.ZILLIZ_TOKEN;
