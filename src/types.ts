@@ -176,6 +176,7 @@ export interface TitanConfig {
   autoConsolidation: AutoConsolidationConfig;
   proactiveSuggestions: ProactiveSuggestionsConfig;
   crossProject: CrossProjectConfig;
+  hybridSearch: HybridSearchConfig;
 }
 
 // Pre-compaction context
@@ -517,4 +518,36 @@ export interface CrossProjectConfig {
   minRelevance: number;                  // default: 0.6
   maxPatternsPerQuery: number;           // default: 10
   decayHalfLifeDays: number;             // default: 180
+}
+
+/**
+ * Reranking strategy for hybrid search
+ */
+export type RerankStrategy = 'rrf' | 'weighted';
+
+/**
+ * Hybrid search configuration
+ * Combines dense semantic search with BM25 sparse keyword search
+ */
+export interface HybridSearchConfig {
+  enabled: boolean;                      // default: false
+  rerankStrategy: RerankStrategy;        // default: 'rrf'
+  rrfK: number;                          // RRF smoothing parameter, default: 60
+  denseWeight: number;                   // Weight for dense search (0-1), default: 0.5
+  sparseWeight: number;                  // Weight for sparse search (0-1), default: 0.5
+  candidateMultiplier: number;           // Retrieve N * limit candidates from each, default: 3
+  bm25K1: number;                        // BM25 term frequency saturation, default: 1.2
+  bm25B: number;                         // BM25 length normalization, default: 0.75
+}
+
+/**
+ * Hybrid search result with combined scoring
+ */
+export interface HybridSearchResult {
+  id: string;
+  content: string;
+  score: number;                         // Combined/reranked score
+  denseScore?: number;                   // Original dense search score
+  sparseScore?: number;                  // Original sparse/BM25 score
+  metadata: Record<string, unknown>;
 }

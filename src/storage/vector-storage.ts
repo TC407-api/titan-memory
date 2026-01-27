@@ -25,6 +25,21 @@ export interface VectorStorageConfig {
   collection: string;
   dimension?: number;
   metricType?: 'COSINE' | 'L2' | 'IP';
+  // Hybrid search options
+  enableHybridSearch?: boolean;
+  bm25K1?: number;                // BM25 term frequency saturation (default: 1.2)
+  bm25B?: number;                 // BM25 length normalization (default: 0.75)
+}
+
+/**
+ * Options for hybrid search
+ */
+export interface HybridSearchOptions {
+  rerankStrategy: 'rrf' | 'weighted';
+  rrfK?: number;                  // RRF smoothing parameter (default: 60)
+  denseWeight?: number;           // Weight for dense search (default: 0.5)
+  sparseWeight?: number;          // Weight for sparse search (default: 0.5)
+  filter?: string;                // Optional filter expression
 }
 
 /**
@@ -46,6 +61,17 @@ export interface IVectorStorage {
    * Search for similar entries using semantic similarity
    */
   search(query: string, limit: number): Promise<VectorSearchResult[]>;
+
+  /**
+   * Hybrid search combining dense semantic search with BM25 sparse keyword search
+   * Falls back to regular search if hybrid search is not enabled/supported
+   */
+  hybridSearch?(query: string, limit: number, options?: HybridSearchOptions): Promise<VectorSearchResult[]>;
+
+  /**
+   * Check if hybrid search is available
+   */
+  isHybridSearchEnabled?(): boolean;
 
   /**
    * Get a specific entry by ID

@@ -97,6 +97,17 @@ const DEFAULT_CONFIG: TitanConfig = {
     maxPatternsPerQuery: 10,
     decayHalfLifeDays: 180,
   },
+
+  hybridSearch: {
+    enabled: false,                // Off by default - pure semantic search
+    rerankStrategy: 'rrf',         // Reciprocal Rank Fusion (balanced approach)
+    rrfK: 60,                      // RRF smoothing parameter
+    denseWeight: 0.5,              // Equal weight for weighted reranking
+    sparseWeight: 0.5,             // Equal weight for weighted reranking
+    candidateMultiplier: 3,        // Retrieve 3x candidates from each search
+    bm25K1: 1.2,                   // BM25 term frequency saturation
+    bm25B: 0.75,                   // BM25 length normalization
+  },
 };
 
 let currentConfig: TitanConfig = { ...DEFAULT_CONFIG };

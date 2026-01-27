@@ -8,6 +8,7 @@ export {
   IEmbeddingGenerator,
   VectorSearchResult,
   VectorStorageConfig,
+  HybridSearchOptions,
 } from './vector-storage.js';
 
 export {

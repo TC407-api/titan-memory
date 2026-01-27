@@ -167,6 +167,7 @@ MIRAS (Memory with Intelligent Retrieval and Adaptive Storage) brings 7 advanced
 | Auto-Consolidation | `off` | Merge highly similar memories |
 | Proactive Suggestions | `off` | Context-aware memory recommendations |
 | Cross-Project Learning | `off` | Pattern transfer between projects |
+| **Hybrid Search** | `off` | BM25 keyword + dense semantic search with RRF reranking |
 
 ### Enable MIRAS Features
 
@@ -198,6 +199,13 @@ MIRAS (Memory with Intelligent Retrieval and Adaptive Storage) brings 7 advanced
   "crossProject": {
     "enabled": true,
     "minApplicability": 0.7
+  },
+  "hybridSearch": {
+    "enabled": true,
+    "rerankStrategy": "rrf",
+    "rrfK": 60,
+    "denseWeight": 0.5,
+    "sparseWeight": 0.5
   }
 }
 ```
@@ -244,6 +252,41 @@ const mirasStats = await titan.getMirasStats();
 | `learning` | 180 | Learnings need periodic refresh |
 | `general` | 180 | Default for unclassified content |
 | `error` | 90 | Errors get fixed, less relevant over time |
+
+### Hybrid Search (NEW)
+
+Hybrid search combines dense semantic vectors with BM25 sparse keyword vectors for superior retrieval quality.
+
+**Why Hybrid Search?**
+- **Semantic search** captures meaning: "database connection issues" finds "PostgreSQL timeout errors"
+- **BM25 keyword search** captures exact terms: "ECONNREFUSED 127.0.0.1:5432" finds exact matches
+- **Combined** covers both failure modes for comprehensive retrieval
+
+**Reranking Strategies:**
+
+| Strategy | Best For | How It Works |
+|----------|----------|--------------|
+| **RRF** (default) | Balanced results | Combines rankings from both searches using Reciprocal Rank Fusion |
+| **Weighted** | Domain-specific | Applies explicit weights (e.g., 0.7 dense, 0.3 sparse) |
+
+**Configuration:**
+```json
+{
+  "hybridSearch": {
+    "enabled": true,
+    "rerankStrategy": "rrf",  // or "weighted"
+    "rrfK": 60,               // RRF smoothing parameter
+    "denseWeight": 0.5,       // For weighted strategy
+    "sparseWeight": 0.5,      // For weighted strategy
+    "bm25K1": 1.2,            // Term frequency saturation
+    "bm25B": 0.75             // Length normalization
+  }
+}
+```
+
+**BM25 Parameters:**
+- `bm25K1` (1.2): Higher values give more weight to term frequency
+- `bm25B` (0.75): 0 = no length normalization, 1 = full normalization
 
 ## CLI Usage
 

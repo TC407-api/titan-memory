@@ -41,6 +41,10 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
         uri: config.zillizUri,
         token: config.zillizToken,
         collection: collectionName,
+        // Hybrid search configuration
+        enableHybridSearch: config.hybridSearch?.enabled ?? false,
+        bm25K1: config.hybridSearch?.bm25K1 ?? 1.2,
+        bm25B: config.hybridSearch?.bm25B ?? 0.75,
       });
       await this.vectorStorage.initialize();
     }
@@ -129,8 +133,25 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
     let memories: MemoryEntry[] = [];
 
     if (this.vectorStorage) {
-      // Vector search in Zilliz
-      const results = await this.vectorStorage.search(queryText, limit * 2); // Get extra for decay filtering
+      // Use hybrid search if enabled, otherwise fall back to regular search
+      const hybridConfig = config.hybridSearch;
+      const useHybrid = hybridConfig?.enabled &&
+                        this.vectorStorage.isHybridSearchEnabled?.() &&
+                        this.vectorStorage.hybridSearch;
+
+      let results;
+      if (useHybrid && this.vectorStorage.hybridSearch) {
+        // Hybrid search: combines dense semantic + BM25 keyword search
+        results = await this.vectorStorage.hybridSearch(queryText, limit * 2, {
+          rerankStrategy: hybridConfig.rerankStrategy || 'rrf',
+          rrfK: hybridConfig.rrfK || 60,
+          denseWeight: hybridConfig.denseWeight || 0.5,
+          sparseWeight: hybridConfig.sparseWeight || 0.5,
+        });
+      } else {
+        // Regular dense vector search
+        results = await this.vectorStorage.search(queryText, limit * 2);
+      }
 
       memories = results.map(r => ({
         id: r.id,

@@ -11,6 +11,7 @@ import {
   IEmbeddingGenerator,
   VectorSearchResult,
   VectorStorageConfig,
+  HybridSearchOptions,
 } from './vector-storage.js';
 
 /**
@@ -50,6 +51,9 @@ export class ZillizClient implements IVectorStorage {
   private readonly dimension: number;
   private readonly metricType: string;
   private readonly embeddingGenerator: IEmbeddingGenerator;
+  private readonly enableHybridSearch: boolean;
+  private readonly bm25K1: number;
+  private readonly bm25B: number;
   private isInitialized: boolean = false;
 
   constructor(
@@ -62,6 +66,17 @@ export class ZillizClient implements IVectorStorage {
     this.dimension = config.dimension ?? 1024; // voyage-4 series default
     this.metricType = config.metricType ?? 'COSINE';
     this.embeddingGenerator = embeddingGenerator ?? new DefaultEmbeddingGenerator(this.dimension);
+    // Hybrid search configuration
+    this.enableHybridSearch = config.enableHybridSearch ?? false;
+    this.bm25K1 = config.bm25K1 ?? 1.2;
+    this.bm25B = config.bm25B ?? 0.75;
+  }
+
+  /**
+   * Check if hybrid search is available
+   */
+  isHybridSearchEnabled(): boolean {
+    return this.enableHybridSearch;
   }
 
   async initialize(): Promise<void> {
@@ -90,6 +105,80 @@ export class ZillizClient implements IVectorStorage {
   }
 
   private async createCollection(): Promise<void> {
+    if (this.enableHybridSearch) {
+      // Create collection with hybrid search schema (dense + sparse vectors)
+      await this.createHybridCollection();
+    } else {
+      // Create simple collection with dense vectors only
+      await fetch(`${this.uri}/v2/vectordb/collections/create`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          collectionName: this.collection,
+          dimension: this.dimension,
+          metricType: this.metricType,
+          primaryField: 'id',
+          vectorField: 'embedding',
+        }),
+      });
+    }
+  }
+
+  /**
+   * Create collection with hybrid search schema supporting both dense and sparse vectors
+   */
+  private async createHybridCollection(): Promise<void> {
+    // Define schema with both dense and sparse vector fields
+    const schema = {
+      autoId: false,
+      enableDynamicField: true,
+      fields: [
+        {
+          fieldName: 'id',
+          dataType: 'VarChar',
+          isPrimary: true,
+          maxLength: 64,
+        },
+        {
+          fieldName: 'content',
+          dataType: 'VarChar',
+          maxLength: 8000,
+          enableAnalyzer: true, // Enable text analysis for BM25
+        },
+        {
+          fieldName: 'embedding',
+          dataType: 'FloatVector',
+          dim: this.dimension,
+        },
+        {
+          fieldName: 'sparse_embedding',
+          dataType: 'SparseFloatVector',
+        },
+        {
+          fieldName: 'timestamp',
+          dataType: 'VarChar',
+          maxLength: 64,
+        },
+        {
+          fieldName: 'metadata',
+          dataType: 'VarChar',
+          maxLength: 16000,
+        },
+      ],
+      functions: [
+        {
+          name: 'content_bm25',
+          type: 'BM25',
+          inputFieldNames: ['content'],
+          outputFieldNames: ['sparse_embedding'],
+        },
+      ],
+    };
+
+    // Create collection with schema
     await fetch(`${this.uri}/v2/vectordb/collections/create`, {
       method: 'POST',
       headers: {
@@ -98,10 +187,45 @@ export class ZillizClient implements IVectorStorage {
       },
       body: JSON.stringify({
         collectionName: this.collection,
-        dimension: this.dimension,
-        metricType: this.metricType,
-        primaryField: 'id',
-        vectorField: 'embedding',
+        schema,
+      }),
+    });
+
+    // Create indexes for both dense and sparse vectors
+    await this.createHybridIndexes();
+  }
+
+  /**
+   * Create indexes for hybrid search (dense + sparse)
+   */
+  private async createHybridIndexes(): Promise<void> {
+    // Create index for dense vectors
+    await fetch(`${this.uri}/v2/vectordb/indexes/create`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        collectionName: this.collection,
+        indexParams: [
+          {
+            fieldName: 'embedding',
+            indexName: 'dense_idx',
+            indexType: 'AUTOINDEX',
+            metricType: this.metricType,
+          },
+          {
+            fieldName: 'sparse_embedding',
+            indexName: 'sparse_idx',
+            indexType: 'AUTOINDEX',
+            metricType: 'BM25',
+            params: {
+              bm25_k1: this.bm25K1,
+              bm25_b: this.bm25B,
+            },
+          },
+        ],
       }),
     });
   }
@@ -143,6 +267,93 @@ export class ZillizClient implements IVectorStorage {
         limit,
         outputFields: ['id', 'content', 'timestamp', 'metadata'],
       }),
+    });
+
+    const data = await response.json() as { results?: Array<Record<string, unknown>> };
+    return (data.results || []).map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      content: r.content as string,
+      score: r.score as number,
+      metadata: JSON.parse(r.metadata as string),
+    }));
+  }
+
+  /**
+   * Hybrid search combining dense semantic search with BM25 sparse keyword search
+   * Uses Reciprocal Rank Fusion (RRF) or weighted reranking to combine results
+   */
+  async hybridSearch(
+    query: string,
+    limit: number,
+    options: HybridSearchOptions = { rerankStrategy: 'rrf' }
+  ): Promise<VectorSearchResult[]> {
+    if (!this.enableHybridSearch) {
+      // Fallback to regular search if hybrid not enabled
+      return this.search(query, limit);
+    }
+
+    const embedding = await this.embeddingGenerator.generateEmbedding(query);
+    const candidateLimit = limit * 3; // Retrieve more candidates for reranking
+
+    // Build reranker configuration based on strategy
+    let rerank: Record<string, unknown>;
+    if (options.rerankStrategy === 'weighted') {
+      rerank = {
+        strategy: 'weighted',
+        params: {
+          weights: [options.denseWeight ?? 0.5, options.sparseWeight ?? 0.5],
+        },
+      };
+    } else {
+      // Default to RRF
+      rerank = {
+        strategy: 'rrf',
+        params: {
+          k: options.rrfK ?? 60,
+        },
+      };
+    }
+
+    // Build hybrid search request
+    const searchRequest = {
+      collectionName: this.collection,
+      search: [
+        {
+          // Dense vector search (semantic)
+          data: [embedding],
+          annsField: 'embedding',
+          limit: candidateLimit,
+          params: {
+            metric_type: this.metricType,
+          },
+        },
+        {
+          // Sparse vector search (BM25 keyword)
+          data: [query], // Raw text - Zilliz converts to sparse vector via BM25 function
+          annsField: 'sparse_embedding',
+          limit: candidateLimit,
+          params: {
+            metric_type: 'BM25',
+          },
+        },
+      ],
+      rerank,
+      limit,
+      outputFields: ['id', 'content', 'timestamp', 'metadata'],
+    };
+
+    // Add filter if provided
+    if (options.filter) {
+      (searchRequest as Record<string, unknown>).filter = options.filter;
+    }
+
+    const response = await fetch(`${this.uri}/v2/vectordb/entities/hybrid_search`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(searchRequest),
     });
 
     const data = await response.json() as { results?: Array<Record<string, unknown>> };
