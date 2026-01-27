@@ -5,8 +5,8 @@
 import { ToolHandler, ToolDefinitions } from '../src/mcp/tools';
 
 describe('MCP Tool Definitions', () => {
-  it('should have 10 tools defined', () => {
-    expect(ToolDefinitions).toHaveLength(10);
+  it('should have 13 tools defined', () => {
+    expect(ToolDefinitions).toHaveLength(13);
   });
 
   it('should have correct tool names', () => {
@@ -21,6 +21,10 @@ describe('MCP Tool Definitions', () => {
     expect(toolNames).toContain('titan_today');
     expect(toolNames).toContain('titan_prune');
     expect(toolNames).toContain('titan_feedback'); // FR-1: Utility tracking
+    // MIRAS Enhancement tools
+    expect(toolNames).toContain('titan_suggest');
+    expect(toolNames).toContain('titan_patterns');
+    expect(toolNames).toContain('titan_miras_stats');
   });
 
   it('should have required fields in tool definitions', () => {

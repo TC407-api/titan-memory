@@ -66,6 +66,25 @@ export const ToolSchemas = {
     context: z.string().optional().describe('Optional context about why the memory was helpful/harmful'),
     sessionId: z.string().optional().describe('Session ID for idempotency within session'),
   }),
+
+  // MIRAS Enhancement: Proactive Suggestions
+  titan_suggest: z.object({
+    context: z.string().describe('Current context or task description to get suggestions for'),
+    limit: z.number().default(5).optional().describe('Maximum suggestions to return (default: 5)'),
+    minRelevance: z.number().default(0.5).optional().describe('Minimum relevance threshold (0-1)'),
+    includeHighlighting: z.boolean().default(true).optional().describe('Include highlighted relevant portions'),
+  }),
+
+  // MIRAS Enhancement: Find Cross-Project Patterns
+  titan_patterns: z.object({
+    query: z.string().describe('Query to find relevant patterns'),
+    limit: z.number().default(5).optional().describe('Maximum patterns to return'),
+    minRelevance: z.number().default(0.6).optional().describe('Minimum relevance threshold'),
+    domain: z.string().optional().describe('Filter by domain (e.g., "backend", "frontend", "general")'),
+  }),
+
+  // MIRAS Enhancement: Get MIRAS Stats
+  titan_miras_stats: z.object({}),
 };
 
 // JSON Schema versions for MCP tool registration
@@ -198,6 +217,43 @@ export const ToolDefinitions = [
       required: ['id', 'signal'],
     },
   },
+  {
+    name: 'titan_suggest',
+    description: 'MIRAS: Get proactive memory suggestions based on current context. Returns relevant memories ranked by utility, recency, and semantic relevance.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        context: { type: 'string', description: 'Current context or task description to get suggestions for' },
+        limit: { type: 'number', description: 'Maximum suggestions to return (default: 5)' },
+        minRelevance: { type: 'number', description: 'Minimum relevance threshold 0-1 (default: 0.5)' },
+        includeHighlighting: { type: 'boolean', description: 'Include highlighted relevant portions (default: true)' },
+      },
+      required: ['context'],
+    },
+  },
+  {
+    name: 'titan_patterns',
+    description: 'MIRAS: Find transferable patterns from cross-project learning. Returns patterns that may be applicable to the current context.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Query to find relevant patterns' },
+        limit: { type: 'number', description: 'Maximum patterns to return (default: 5)' },
+        minRelevance: { type: 'number', description: 'Minimum relevance threshold 0-1 (default: 0.6)' },
+        domain: { type: 'string', description: 'Filter by domain (e.g., "backend", "frontend", "general")' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'titan_miras_stats',
+    description: 'MIRAS: Get statistics about MIRAS enhancement features including embedding, highlighting, surprise, decay, and cross-project learning.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -328,6 +384,48 @@ export class ToolHandler {
             parsed.sessionId,
             parsed.context
           );
+          break;
+        }
+
+        case 'titan_suggest': {
+          const parsed = ToolSchemas.titan_suggest.parse(args);
+          const suggestions = await titan.suggest(parsed.context, {
+            limit: parsed.limit,
+            minRelevance: parsed.minRelevance,
+            includeHighlighting: parsed.includeHighlighting,
+          });
+          result = {
+            suggestions,
+            count: suggestions.length,
+            context: parsed.context.substring(0, 100) + (parsed.context.length > 100 ? '...' : ''),
+          };
+          break;
+        }
+
+        case 'titan_patterns': {
+          const parsed = ToolSchemas.titan_patterns.parse(args);
+          const patterns = await titan.findRelevantPatterns(parsed.query, {
+            limit: parsed.limit,
+            minRelevance: parsed.minRelevance,
+            domain: parsed.domain,
+          });
+          result = {
+            patterns: patterns.map(p => ({
+              patternId: p.pattern.patternId,
+              sourceProject: p.pattern.sourceProject,
+              domain: p.pattern.domain,
+              relevance: p.relevance,
+              matchedTerms: p.matchedTerms,
+              content: p.pattern.distilledContent || p.pattern.content.substring(0, 200),
+              applicability: p.pattern.applicability,
+            })),
+            count: patterns.length,
+          };
+          break;
+        }
+
+        case 'titan_miras_stats': {
+          result = await titan.getMirasStats();
           break;
         }
 

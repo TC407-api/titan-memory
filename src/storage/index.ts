@@ -14,3 +14,20 @@ export {
   ZillizClient,
   DefaultEmbeddingGenerator,
 } from './zilliz-client.js';
+
+// MIRAS Enhancement: Embedding generators
+export {
+  VoyageEmbeddingGenerator,
+  LocalEmbeddingGenerator,
+  CachedEmbeddingGenerator,
+  createEmbeddingGenerator,
+  cosineSimilarity,
+  euclideanDistance,
+  findTopK,
+} from './embeddings/index.js';
+
+export type {
+  VoyageEmbeddingConfig,
+  LocalEmbeddingConfig,
+  CacheConfig,
+} from './embeddings/index.js';

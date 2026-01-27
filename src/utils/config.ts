@@ -37,6 +37,65 @@ const DEFAULT_CONFIG: TitanConfig = {
   // FR-3: Proactive Context Flush
   contextFlushThreshold: 0.5,  // 50%
   enableProactiveFlush: true,
+
+  // MIRAS Enhancement Configurations (all defaults to OFF for backward compatibility)
+  embedding: {
+    provider: 'hash',              // Safe default - no external API needed
+    dimension: 1536,
+    cacheSize: 10000,
+    batchSize: 32,
+    timeout: 30000,
+  },
+
+  semanticHighlight: {
+    enabled: false,                // Off by default
+    threshold: 0.5,
+    highlightOnRecall: true,
+  },
+
+  semanticSurprise: {
+    algorithm: 'lsh',              // Safe default - existing behavior
+    similarityThreshold: 0.7,
+    comparisionLimit: 50,
+  },
+
+  dataDependentDecay: {
+    strategy: 'time-only',         // Safe default - existing behavior
+    utilityWeight: 1.0,
+    accessWeight: 1.0,
+  },
+
+  contextCapture: {
+    enabled: false,                // Off by default
+    momentumThreshold: 0.7,
+    bufferSize: 10,
+    captureWindowMs: 60000,
+    linkToMemories: true,
+  },
+
+  autoConsolidation: {
+    enabled: false,                // Off by default
+    similarityThreshold: 0.9,
+    cooldownMs: 60000,
+    maxPendingCandidates: 100,
+    autoMergeThreshold: 0.95,
+  },
+
+  proactiveSuggestions: {
+    enabled: false,                // Off by default
+    maxSuggestions: 5,
+    minUtility: 0.6,
+    minRelevance: 0.5,
+    includeHighlighting: true,
+  },
+
+  crossProject: {
+    enabled: false,                // Off by default
+    minApplicability: 0.7,
+    minRelevance: 0.6,
+    maxPatternsPerQuery: 10,
+    decayHalfLifeDays: 180,
+  },
 };
 
 let currentConfig: TitanConfig = { ...DEFAULT_CONFIG };

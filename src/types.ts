@@ -166,6 +166,16 @@ export interface TitanConfig {
   // FR-3: Proactive Context Flush
   contextFlushThreshold: number;  // Default: 0.5 (50%)
   enableProactiveFlush: boolean;  // Default: true
+
+  // MIRAS Enhancement Configurations
+  embedding: EmbeddingConfig;
+  semanticHighlight: SemanticHighlightConfig;
+  semanticSurprise: SemanticSurpriseConfig;
+  dataDependentDecay: DataDependentDecayConfig;
+  contextCapture: ContextCaptureConfig;
+  autoConsolidation: AutoConsolidationConfig;
+  proactiveSuggestions: ProactiveSuggestionsConfig;
+  crossProject: CrossProjectConfig;
 }
 
 // Pre-compaction context
@@ -316,4 +326,195 @@ export interface ContinualLearnerConfig {
   maturityAgeDays: number;           // Days to reach maturity (default: 30)
   stableAgeDays: number;             // Days to reach stability (default: 90)
   enableCrossTransfer: boolean;      // Enable cross-pattern learning (default: true)
+}
+
+// ==================== MIRAS Enhancement Types ====================
+
+/**
+ * Content types for data-dependent decay
+ */
+export type ContentType = 'decision' | 'error' | 'solution' | 'architecture' | 'learning' | 'preference' | 'general';
+
+/**
+ * Embedding provider options
+ */
+export type EmbeddingProvider = 'voyage' | 'local' | 'hash';
+
+/**
+ * Surprise algorithm options
+ */
+export type SurpriseAlgorithm = 'lsh' | 'semantic';
+
+/**
+ * Decay strategy options
+ */
+export type DecayStrategy = 'time-only' | 'data-dependent';
+
+/**
+ * Semantic highlight result
+ */
+export interface HighlightResult {
+  highlightedSentences: string[];
+  compressionRate: number;
+  sentenceProbabilities: number[];
+  originalSentenceCount: number;
+  highlightedSentenceCount: number;
+}
+
+/**
+ * Highlighted memory entry (extended with highlighting info)
+ */
+export interface HighlightedMemory extends MemoryEntry {
+  highlightedContent?: string;
+  highlightMetadata?: {
+    compressionRate: number;
+    originalLength: number;
+    highlightedLength: number;
+  };
+}
+
+/**
+ * Context capture result
+ */
+export interface ContextCaptureResult {
+  capturedBefore: string[];
+  trigger: string;
+  momentumPeak: number;
+  timestamp: Date;
+  linkedMemoryIds: string[];
+}
+
+/**
+ * Proactive suggestion
+ */
+export interface ProactiveSuggestion {
+  memoryId: string;
+  content: string;
+  highlightedContent?: string;
+  relevanceScore: number;
+  utilityScore: number;
+  reason: string;
+  tags: string[];
+}
+
+/**
+ * Consolidation candidate
+ */
+export interface ConsolidationCandidate {
+  memory1Id: string;
+  memory2Id: string;
+  similarity: number;
+  detectedAt: Date;
+}
+
+/**
+ * Cross-project pattern
+ */
+export interface TransferablePattern {
+  patternId: string;
+  sourceProject: string;
+  content: string;
+  distilledContent?: string;
+  applicability: number;
+  domain: string;
+  stage: PatternStage;
+  transferCount: number;
+}
+
+/**
+ * Pattern match result for cross-project learning
+ */
+export interface PatternMatchResult {
+  pattern: TransferablePattern;
+  relevance: number;
+  matchedTerms: string[];
+}
+
+// ==================== MIRAS Configuration Interfaces ====================
+
+/**
+ * Embedding configuration
+ */
+export interface EmbeddingConfig {
+  provider: EmbeddingProvider;           // default: 'hash'
+  model?: string;                        // default: 'voyage-3-lite' for voyage
+  apiKey?: string;                       // or VOYAGE_API_KEY env
+  dimension?: number;                    // default: 1536
+  cacheSize?: number;                    // default: 10000
+  batchSize?: number;                    // default: 32
+  timeout?: number;                      // default: 30000ms
+}
+
+/**
+ * Semantic highlighting configuration
+ */
+export interface SemanticHighlightConfig {
+  enabled: boolean;                      // default: false
+  threshold: number;                     // default: 0.5
+  model?: string;                        // default: 'zilliz/semantic-highlight-bilingual-v1'
+  highlightOnRecall: boolean;            // default: true (auto-highlight in recall)
+  maxSentences?: number;                 // default: unlimited
+}
+
+/**
+ * Semantic surprise configuration
+ */
+export interface SemanticSurpriseConfig {
+  algorithm: SurpriseAlgorithm;          // default: 'lsh'
+  similarityThreshold: number;           // default: 0.7
+  comparisionLimit?: number;             // default: 50 (max memories to compare)
+}
+
+/**
+ * Data-dependent decay configuration
+ */
+export interface DataDependentDecayConfig {
+  strategy: DecayStrategy;               // default: 'time-only'
+  halfLifeOverrides?: Partial<Record<ContentType, number>>;
+  utilityWeight?: number;                // default: 1.0 (multiplier for utility impact)
+  accessWeight?: number;                 // default: 1.0 (multiplier for access impact)
+}
+
+/**
+ * Auto context capture configuration
+ */
+export interface ContextCaptureConfig {
+  enabled: boolean;                      // default: false
+  momentumThreshold: number;             // default: 0.7
+  bufferSize: number;                    // default: 10
+  captureWindowMs: number;               // default: 60000 (1 minute)
+  linkToMemories: boolean;               // default: true
+}
+
+/**
+ * Auto consolidation configuration
+ */
+export interface AutoConsolidationConfig {
+  enabled: boolean;                      // default: false
+  similarityThreshold: number;           // default: 0.9
+  cooldownMs: number;                    // default: 60000
+  maxPendingCandidates: number;          // default: 100
+  autoMergeThreshold: number;            // default: 0.95 (auto-merge without review)
+}
+
+/**
+ * Proactive suggestions configuration
+ */
+export interface ProactiveSuggestionsConfig {
+  enabled: boolean;                      // default: false
+  maxSuggestions: number;                // default: 5
+  minUtility: number;                    // default: 0.6
+  minRelevance: number;                  // default: 0.5
+  includeHighlighting: boolean;          // default: true
+}
+
+/**
+ * Cross-project learning configuration
+ */
+export interface CrossProjectConfig {
+  enabled: boolean;                      // default: false
+  minApplicability: number;              // default: 0.7
+  minRelevance: number;                  // default: 0.6
+  maxPatternsPerQuery: number;           // default: 10
+  decayHalfLifeDays: number;             // default: 180
 }

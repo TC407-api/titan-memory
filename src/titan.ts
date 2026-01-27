@@ -15,6 +15,11 @@ import {
   MemoryStats,
   CompactionContext,
   MemorySummary,
+  ProactiveSuggestion,
+  PatternMatchResult,
+  TransferablePattern,
+  ContextCaptureResult,
+  HighlightedMemory,
 } from './types.js';
 import {
   BaseMemoryLayer,
@@ -46,6 +51,17 @@ import { BehavioralValidator, ValidationReport, QualityScore } from './validatio
 import { AdaptiveMemory, FusionResult } from './adaptive/adaptive-memory.js';
 import { ContinualLearner } from './learning/continual-learner.js';
 
+// MIRAS Enhancement imports
+import { createEmbeddingGenerator, IEmbeddingGenerator } from './storage/index.js';
+import { SemanticHighlighter, createSemanticHighlighter } from './utils/semantic-highlight.js';
+import { createSurpriseCalculator, ISurpriseCalculator } from './utils/semantic-surprise.js';
+import { DecayCalculator, createDecayCalculator } from './utils/decay-strategies.js';
+import { ContextCaptureManager, createContextCaptureManager } from './utils/context-capture.js';
+import { AutoConsolidationManager, createAutoConsolidationManager } from './adaptive/auto-consolidation.js';
+import { ProactiveSuggestionsManager, createProactiveSuggestionsManager } from './mcp/proactive-suggestions.js';
+import { CrossProjectLearningManager, createCrossProjectLearningManager } from './learning/cross-project.js';
+import { PatternMatcher, createPatternMatcher } from './learning/pattern-matcher.js';
+
 /**
  * Gating decisions for intelligent routing
  */
@@ -73,6 +89,17 @@ export class TitanMemory {
   private validator: BehavioralValidator;
   private adaptiveMemory: AdaptiveMemory;
   private continualLearner: ContinualLearner;
+
+  // MIRAS Enhancement Systems
+  private embeddingGenerator?: IEmbeddingGenerator;
+  private semanticHighlighter?: SemanticHighlighter;
+  private surpriseCalculator?: ISurpriseCalculator;
+  private decayCalculator?: DecayCalculator;
+  private contextCaptureManager?: ContextCaptureManager;
+  private autoConsolidationManager?: AutoConsolidationManager;
+  private proactiveSuggestionsManager?: ProactiveSuggestionsManager;
+  private crossProjectLearner?: CrossProjectLearningManager;
+  private patternMatcher?: PatternMatcher;
 
   constructor(configPath?: string, projectId?: string) {
     loadConfig(configPath);
@@ -104,6 +131,66 @@ export class TitanMemory {
     this.validator = new BehavioralValidator();
     this.adaptiveMemory = new AdaptiveMemory();
     this.continualLearner = new ContinualLearner();
+
+    // MIRAS Enhancements: Initialize based on config
+    this.initializeMirasEnhancements();
+  }
+
+  /**
+   * Initialize MIRAS enhancement systems based on configuration
+   */
+  private initializeMirasEnhancements(): void {
+    const config = loadConfig();
+
+    // Feature 1: Embedding generator (with caching)
+    if (config.embedding.provider !== 'hash') {
+      try {
+        this.embeddingGenerator = createEmbeddingGenerator(config.embedding);
+      } catch (error) {
+        console.warn('Failed to create embedding generator, falling back to hash:', error);
+      }
+    }
+
+    // Feature 1b: Semantic highlighting
+    if (config.semanticHighlight.enabled) {
+      this.semanticHighlighter = createSemanticHighlighter(
+        config.semanticHighlight,
+        this.embeddingGenerator
+      );
+    }
+
+    // Feature 2: Semantic surprise calculator
+    this.surpriseCalculator = createSurpriseCalculator(
+      config.semanticSurprise,
+      this.embeddingGenerator
+    );
+
+    // Feature 3: Data-dependent decay calculator
+    this.decayCalculator = createDecayCalculator(config.dataDependentDecay);
+
+    // Feature 4: Auto context capture
+    if (config.contextCapture.enabled) {
+      this.contextCaptureManager = createContextCaptureManager(config.contextCapture);
+    }
+
+    // Feature 5: Auto consolidation
+    if (config.autoConsolidation.enabled) {
+      this.autoConsolidationManager = createAutoConsolidationManager(config.autoConsolidation);
+    }
+
+    // Feature 6: Proactive suggestions
+    if (config.proactiveSuggestions.enabled) {
+      this.proactiveSuggestionsManager = createProactiveSuggestionsManager(
+        config.proactiveSuggestions,
+        this.embeddingGenerator
+      );
+    }
+
+    // Feature 7: Cross-project learning
+    if (config.crossProject.enabled) {
+      this.crossProjectLearner = createCrossProjectLearningManager(config.crossProject);
+      this.patternMatcher = createPatternMatcher(this.embeddingGenerator);
+    }
   }
 
   /**
@@ -167,7 +254,7 @@ export class TitanMemory {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    await Promise.all([
+    const initPromises = [
       // Core layers
       this.factualLayer.initialize(),
       this.longTermLayer.initialize(),
@@ -180,7 +267,14 @@ export class TitanMemory {
       this.validator.initialize(),
       this.adaptiveMemory.initialize(),
       this.continualLearner.initialize(),
-    ]);
+    ];
+
+    // MIRAS: Add cross-project learner initialization
+    if (this.crossProjectLearner) {
+      initPromises.push(this.crossProjectLearner.initialize());
+    }
+
+    await Promise.all(initPromises);
 
     this.initialized = true;
   }
@@ -841,10 +935,10 @@ export class TitanMemory {
   }
 
   /**
-   * Close all layers and Phase 3 systems
+   * Close all layers, Phase 3 systems, and MIRAS systems
    */
   async close(): Promise<void> {
-    await Promise.all([
+    const closePromises: Promise<void>[] = [
       // Core layers
       ...[...this.layers.values()].map(l => l.close()),
       // Phase 3 systems
@@ -854,7 +948,14 @@ export class TitanMemory {
       this.validator.close(),
       this.adaptiveMemory.close(),
       this.continualLearner.close(),
-    ]);
+    ];
+
+    // MIRAS: Close cross-project learner (the only MIRAS system that needs explicit closing)
+    if (this.crossProjectLearner) {
+      closePromises.push(this.crossProjectLearner.close());
+    }
+
+    await Promise.all(closePromises);
     this.initialized = false;
   }
 
@@ -1262,6 +1363,266 @@ export class TitanMemory {
     ]);
 
     return { graph, decisions, world, validation, adaptive, learning };
+  }
+
+  // ==================== MIRAS Enhancement API Methods ====================
+
+  /**
+   * Get proactive memory suggestions based on current context
+   * Feature 6: Proactive Suggestions
+   */
+  async suggest(context: string, options?: {
+    limit?: number;
+    minRelevance?: number;
+    includeHighlighting?: boolean;
+  }): Promise<ProactiveSuggestion[]> {
+    if (!this.initialized) await this.initialize();
+
+    if (!this.proactiveSuggestionsManager) {
+      return [];
+    }
+
+    // Get available memories for suggestions
+    const memories: MemoryEntry[] = [];
+    for (const layer of this.layers.values()) {
+      const result = await layer.query('', { limit: 100 });
+      memories.push(...result.memories);
+    }
+
+    return this.proactiveSuggestionsManager.suggest(context, memories, options);
+  }
+
+  /**
+   * Highlight relevant portions of memories for a query
+   * Feature 1b: Semantic Highlighting
+   */
+  async highlightMemories(
+    query: string,
+    memories: MemoryEntry[],
+    threshold?: number
+  ): Promise<HighlightedMemory[]> {
+    if (!this.initialized) await this.initialize();
+
+    if (!this.semanticHighlighter) {
+      // Return memories without highlighting if not enabled
+      return memories.map(m => ({
+        ...m,
+        highlightedContent: m.content,
+        highlightMetadata: {
+          compressionRate: 0,
+          originalLength: m.content.length,
+          highlightedLength: m.content.length,
+        },
+      }));
+    }
+
+    const results: HighlightedMemory[] = [];
+    for (const memory of memories) {
+      const highlighted = await this.semanticHighlighter.highlight(
+        query,
+        memory.content,
+        threshold
+      );
+      const highlightedContent = highlighted.highlightedSentences.join(' ');
+      results.push({
+        ...memory,
+        highlightedContent,
+        highlightMetadata: {
+          compressionRate: highlighted.compressionRate,
+          originalLength: memory.content.length,
+          highlightedLength: highlightedContent.length,
+        },
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Find relevant patterns from cross-project learning
+   * Feature 7: Cross-Project Learning
+   */
+  async findRelevantPatterns(
+    query: string,
+    options?: {
+      limit?: number;
+      minRelevance?: number;
+      domain?: string;
+    }
+  ): Promise<PatternMatchResult[]> {
+    if (!this.initialized) await this.initialize();
+
+    if (!this.crossProjectLearner || !this.patternMatcher) {
+      return [];
+    }
+
+    const patterns = this.crossProjectLearner.getAllPatterns();
+    return this.patternMatcher.match(query, patterns, {
+      maxResults: options?.limit || 10,
+      minRelevance: options?.minRelevance || 0.6,
+      domains: options?.domain ? [options.domain] : undefined,
+    });
+  }
+
+  /**
+   * Extract transferable patterns from current project
+   * Feature 7: Cross-Project Learning
+   */
+  async extractTransferablePatterns(): Promise<TransferablePattern[]> {
+    if (!this.initialized) await this.initialize();
+
+    if (!this.crossProjectLearner) {
+      return [];
+    }
+
+    const projectId = this.activeProjectId || 'default';
+    const stablePatterns = await this.continualLearner.getPatternsByStage('stable');
+    const maturePatterns = await this.continualLearner.getPatternsByStage('mature');
+
+    return this.crossProjectLearner.extractPatterns(
+      projectId,
+      [...stablePatterns, ...maturePatterns]
+    );
+  }
+
+  /**
+   * Record a pattern transfer for analytics
+   * Feature 7: Cross-Project Learning
+   */
+  async recordPatternTransfer(patternId: string): Promise<boolean> {
+    if (!this.crossProjectLearner) {
+      return false;
+    }
+
+    const projectId = this.activeProjectId || 'default';
+    return this.crossProjectLearner.recordTransfer(patternId, projectId);
+  }
+
+  /**
+   * Capture context automatically based on momentum
+   * Feature 4: Auto Context Capture
+   */
+  async captureContext(
+    trigger: string,
+    momentum?: number
+  ): Promise<ContextCaptureResult | null> {
+    if (!this.contextCaptureManager) {
+      return null;
+    }
+
+    const currentMomentum = momentum ?? this.getCurrentMomentum();
+    return this.contextCaptureManager.captureContext(trigger, currentMomentum);
+  }
+
+  /**
+   * Update context buffer for auto-capture
+   * Feature 4: Auto Context Capture
+   */
+  updateContextBuffer(content: string): void {
+    if (this.contextCaptureManager) {
+      this.contextCaptureManager.addToBuffer(content);
+    }
+  }
+
+  /**
+   * Get MIRAS enhancement statistics
+   */
+  async getMirasStats(): Promise<{
+    embeddingEnabled: boolean;
+    highlightingEnabled: boolean;
+    surpriseAlgorithm: string;
+    decayStrategy: string;
+    contextCaptureEnabled: boolean;
+    autoConsolidationEnabled: boolean;
+    proactiveSuggestionsEnabled: boolean;
+    crossProjectEnabled: boolean;
+    autoConsolidationStats?: {
+      pendingCandidates: number;
+      totalConsolidations: number;
+    };
+    crossProjectStats?: {
+      totalPatterns: number;
+      totalTransfers: number;
+      avgApplicability: number;
+    };
+  }> {
+    const config = loadConfig();
+
+    const result = {
+      embeddingEnabled: config.embedding.provider !== 'hash',
+      highlightingEnabled: config.semanticHighlight.enabled,
+      surpriseAlgorithm: config.semanticSurprise.algorithm,
+      decayStrategy: config.dataDependentDecay.strategy,
+      contextCaptureEnabled: config.contextCapture.enabled,
+      autoConsolidationEnabled: config.autoConsolidation.enabled,
+      proactiveSuggestionsEnabled: config.proactiveSuggestions.enabled,
+      crossProjectEnabled: config.crossProject.enabled,
+      autoConsolidationStats: undefined as { pendingCandidates: number; totalConsolidations: number } | undefined,
+      crossProjectStats: undefined as { totalPatterns: number; totalTransfers: number; avgApplicability: number } | undefined,
+    };
+
+    if (this.autoConsolidationManager) {
+      const stats = this.autoConsolidationManager.getStats();
+      result.autoConsolidationStats = {
+        pendingCandidates: stats.pendingCount,
+        totalConsolidations: stats.historyCount,
+      };
+    }
+
+    if (this.crossProjectLearner) {
+      const stats = this.crossProjectLearner.getStats();
+      result.crossProjectStats = {
+        totalPatterns: stats.totalPatterns,
+        totalTransfers: stats.totalTransfers,
+        avgApplicability: stats.avgApplicability,
+      };
+    }
+
+    return result;
+  }
+
+  /**
+   * Get the embedding generator (for advanced use cases)
+   */
+  getEmbeddingGenerator(): IEmbeddingGenerator | undefined {
+    return this.embeddingGenerator;
+  }
+
+  /**
+   * Calculate semantic surprise for content
+   * Feature 2: Semantic Surprise
+   */
+  async calculateSurprise(
+    content: string,
+    recentMemories?: MemoryEntry[]
+  ): Promise<{ score: number; shouldStore: boolean }> {
+    if (!this.surpriseCalculator) {
+      return { score: 0.5, shouldStore: true };
+    }
+
+    const memories = recentMemories || [];
+    if (memories.length === 0) {
+      // Get recent memories from long-term layer
+      const result = await this.longTermLayer.query('', { limit: 50 });
+      memories.push(...result.memories);
+    }
+
+    return this.surpriseCalculator.calculateSurprise(content, memories);
+  }
+
+  /**
+   * Calculate decay score for a memory
+   * Feature 3: Data-Dependent Decay
+   */
+  calculateDecay(memory: MemoryEntry): number {
+    if (!this.decayCalculator) {
+      // Simple time-based decay fallback
+      const ageMs = Date.now() - new Date(memory.timestamp).getTime();
+      const ageDays = ageMs / (1000 * 60 * 60 * 24);
+      return Math.pow(2, -ageDays / 180);
+    }
+
+    return this.decayCalculator.calculate(memory);
   }
 }
 
