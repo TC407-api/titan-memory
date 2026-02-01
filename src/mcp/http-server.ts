@@ -14,7 +14,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { ToolDefinitions, ToolHandler } from './tools.js';
-import { Auth0Verifier } from './auth/auth0-verifier.js';
+import { Auth0Verifier, VerifiedToken } from './auth/auth0-verifier.js';
 import { createAuthMiddleware, AuthenticatedRequest } from './auth/middleware.js';
 import { createDiscoveryRouter } from './discovery.js';
 import { isLocalhost } from '../utils/auth.js';
@@ -149,7 +149,7 @@ export function createHttpApp(config: HttpServerConfig = {}): Express {
       authMiddleware = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
         const remoteAddress = req.ip || req.socket.remoteAddress;
         if (isLocalhost(remoteAddress)) {
-          req.auth = { token: null as any, bypassed: true };
+          req.auth = { token: null as unknown as VerifiedToken, bypassed: true };
           next();
         } else {
           res.status(401).json({
