@@ -698,16 +698,27 @@ export class TitanMemory {
   async getStats(): Promise<MemoryStats> {
     if (!this.initialized) await this.initialize();
 
-    const [factualCount, longTermCount, semanticCount, episodicCount] =
+    const [factualCount, longTermCount, semanticCount, episodicCount, availableDates] =
       await Promise.all([
         this.factualLayer.count(),
         this.longTermLayer.count(),
         this.semanticLayer.count(),
         this.episodicLayer.count(),
+        this.episodicLayer.getAvailableDates(),
       ]);
 
     const totalMemories =
       factualCount + longTermCount + semanticCount + episodicCount;
+
+    // Dates are returned newest-first; last entry is oldest
+    const oldestMemory = availableDates.length > 0
+      ? new Date(availableDates[availableDates.length - 1])
+      : new Date();
+    const newestMemory = availableDates.length > 0
+      ? new Date(availableDates[0])
+      : new Date();
+
+    const projectKey = this.activeProjectId || 'default';
 
     return {
       totalMemories,
@@ -718,12 +729,12 @@ export class TitanMemory {
         [MemoryLayer.SEMANTIC]: semanticCount,
         [MemoryLayer.EPISODIC]: episodicCount,
       },
-      avgSurpriseScore: 0, // TODO: Calculate from long-term layer
-      avgRetrievalTimeMs: 0, // TODO: Track over time
-      oldestMemory: new Date(), // TODO: Track
-      newestMemory: new Date(),
-      projectCounts: {}, // TODO: Track by project
-      storageBytes: 0, // TODO: Calculate
+      avgSurpriseScore: 0, // Requires O(n) scan across all memories
+      avgRetrievalTimeMs: 0, // Requires query-time instrumentation
+      oldestMemory,
+      newestMemory,
+      projectCounts: { [projectKey]: totalMemories },
+      storageBytes: 0, // Requires storage-layer API
     };
   }
 
