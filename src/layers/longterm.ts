@@ -9,7 +9,7 @@ import { BaseMemoryLayer } from './base.js';
 import { MemoryEntry, MemoryLayer, QueryOptions, QueryResult } from '../types.js';
 import { calculateSurprise, calculateMomentum, calculateDecay } from '../utils/surprise.js';
 import { getConfig, getProjectCollectionName } from '../utils/config.js';
-import { IVectorStorage, ZillizClient } from '../storage/index.js';
+import { IVectorStorage, ZillizClient, createEmbeddingGenerator } from '../storage/index.js';
 
 export class LongTermMemoryLayer extends BaseMemoryLayer {
   // Use circular buffer for O(1) momentum calculation instead of array shift O(n)
@@ -37,15 +37,30 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
     if (!this.vectorStorage && !config.offlineMode && config.zillizUri && config.zillizToken) {
       // Use project-specific collection name for physical isolation
       const collectionName = getProjectCollectionName(this.projectId) + '_longterm';
+
+      // Create embedding generator from config (Voyage AI when API key available, hash fallback)
+      const embeddingConfig = {
+        ...config.embedding,
+        apiKey: config.embedding?.apiKey || process.env.VOYAGE_API_KEY || '',
+      };
+      // Use Voyage provider if API key is available, regardless of config default
+      if (embeddingConfig.apiKey && embeddingConfig.provider === 'hash') {
+        embeddingConfig.provider = 'voyage' as const;
+      }
+      const embeddingGenerator = embeddingConfig.apiKey && embeddingConfig.provider === 'voyage'
+        ? createEmbeddingGenerator(embeddingConfig)
+        : undefined;
+
       this.vectorStorage = new ZillizClient({
         uri: config.zillizUri,
         token: config.zillizToken,
         collection: collectionName,
+        dimension: embeddingConfig.dimension ?? 1024,
         // Hybrid search configuration
         enableHybridSearch: config.hybridSearch?.enabled ?? false,
         bm25K1: config.hybridSearch?.bm25K1 ?? 1.2,
         bm25B: config.hybridSearch?.bm25B ?? 0.75,
-      });
+      }, embeddingGenerator);
       await this.vectorStorage.initialize();
     }
 

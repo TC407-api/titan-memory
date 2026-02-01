@@ -15,7 +15,7 @@ export interface VoyageEmbeddingConfig {
 
 const DEFAULT_CONFIG: Required<VoyageEmbeddingConfig> = {
   apiKey: process.env.VOYAGE_API_KEY || '',
-  model: 'voyage-4-lite',  // Best balance of quality, latency, and cost
+  model: 'voyage-3-large',  // Matches existing cached embeddings (1024 dims)
   dimension: 1024, // voyage-4-lite default (all voyage-4 series use 1024)
   timeout: 30000,
   batchSize: 32,
