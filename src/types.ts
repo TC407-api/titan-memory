@@ -32,6 +32,11 @@ export interface MemoryMetadata {
   tags?: string[];
   routingReason?: string;
 
+  // CatBrain: Category classification
+  category?: string;
+  categoryConfidence?: number;
+  entityStatus?: string;
+
   // FR-1: Utility Tracking (helpful/harmful)
   helpfulCount?: number;      // Incremented when memory aids task completion
   harmfulCount?: number;      // Incremented when memory causes confusion/error
@@ -166,6 +171,18 @@ export interface TitanConfig {
   // FR-3: Proactive Context Flush
   contextFlushThreshold: number;  // Default: 0.5 (50%)
   enableProactiveFlush: boolean;  // Default: true
+
+  // CatBrain Configuration
+  catBrain: {
+    enabled: boolean;
+    retrieveCount: number;
+    highlightThreshold: number;
+    classifierConfidenceThreshold: number;
+    enableGuardrails: boolean;
+    enableDriftMonitor: boolean;
+    enableProjectHooks: boolean;
+    bedrockRulesPath: string;
+  };
 
   // MIRAS Enhancement Configurations
   embedding: EmbeddingConfig;

@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "description": "CatBrain Bedrock Rules - Rights vs Wrongs",
+  "rules": [
+    {
+      "id": "custom-protect-verified",
+      "description": "Verified memories should not be deleted without explicit confirmation",
+      "condition": "delete_verified",
+      "action": "warn",
+      "intentPatterns": ["delete.*verified", "remove.*confirmed"]
+    },
+    {
+      "id": "custom-protect-active",
+      "description": "Active project memories should not be bulk-pruned",
+      "condition": "prune_active",
+      "action": "warn",
+      "intentPatterns": ["prune.*active", "clean.*current"]
+    }
+  ]
+}

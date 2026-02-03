@@ -38,6 +38,18 @@ const DEFAULT_CONFIG: TitanConfig = {
   contextFlushThreshold: 0.5,  // 50%
   enableProactiveFlush: true,
 
+  // CatBrain Configuration (OFF by default)
+  catBrain: {
+    enabled: false,
+    retrieveCount: 50,
+    highlightThreshold: 0.8,
+    classifierConfidenceThreshold: 0.6,
+    enableGuardrails: false,
+    enableDriftMonitor: false,
+    enableProjectHooks: false,
+    bedrockRulesPath: '',
+  },
+
   // MIRAS Enhancement Configurations (all defaults to OFF for backward compatibility)
   embedding: {
     provider: 'hash',              // Safe default - no external API needed

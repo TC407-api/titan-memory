@@ -85,6 +85,23 @@ export const ToolSchemas = {
 
   // MIRAS Enhancement: Get MIRAS Stats
   titan_miras_stats: z.object({}),
+
+  // CatBrain: Classify content
+  titan_classify: z.object({
+    content: z.string().describe('Content to classify into a memory category'),
+  }),
+
+  // CatBrain: Get category summary
+  titan_category_summary: z.object({
+    category: z.enum(['knowledge', 'profile', 'event', 'behavior', 'skill'])
+      .describe('Memory category to get summary for'),
+  }),
+
+  // CatBrain: Check category sufficiency
+  titan_sufficiency: z.object({
+    query: z.string().describe('Query to check category coverage for'),
+    memoryIds: z.array(z.string()).optional().describe('Specific memory IDs to check (uses recent recall if not provided)'),
+  }),
 };
 
 // JSON Schema versions for MCP tool registration
@@ -252,6 +269,44 @@ export const ToolDefinitions = [
       type: 'object' as const,
       properties: {},
       required: [],
+    },
+  },
+  {
+    name: 'titan_classify',
+    description: 'CatBrain: Classify content into a memory category (knowledge/profile/event/behavior/skill). Returns category, confidence, and method.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        content: { type: 'string', description: 'Content to classify' },
+      },
+      required: ['content'],
+    },
+  },
+  {
+    name: 'titan_category_summary',
+    description: 'CatBrain: Get rolling summary for a specific memory category.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        category: {
+          type: 'string',
+          enum: ['knowledge', 'profile', 'event', 'behavior', 'skill'],
+          description: 'Memory category',
+        },
+      },
+      required: ['category'],
+    },
+  },
+  {
+    name: 'titan_sufficiency',
+    description: 'CatBrain: Check category coverage of recall results. Reports missing categories and coverage ratio.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Query to check coverage for' },
+        memoryIds: { type: 'array', items: { type: 'string' }, description: 'Specific memory IDs to check' },
+      },
+      required: ['query'],
     },
   },
 ];
@@ -426,6 +481,42 @@ export class ToolHandler {
 
         case 'titan_miras_stats': {
           result = await titan.getMirasStats();
+          break;
+        }
+
+        case 'titan_classify': {
+          const parsed = ToolSchemas.titan_classify.parse(args);
+          result = titan.classifyContent(parsed.content);
+          break;
+        }
+
+        case 'titan_category_summary': {
+          const parsed = ToolSchemas.titan_category_summary.parse(args);
+          const summary = titan.getCategorySummary(parsed.category as import('../catbrain/types.js').MemoryCategory);
+          if (!summary) {
+            result = { error: 'CatBrain not enabled or no summary available for this category' };
+          } else {
+            result = summary;
+          }
+          break;
+        }
+
+        case 'titan_sufficiency': {
+          const parsed = ToolSchemas.titan_sufficiency.parse(args);
+          // Get memories to check
+          let memories: import('../types.js').MemoryEntry[] = [];
+          if (parsed.memoryIds && parsed.memoryIds.length > 0) {
+            for (const id of parsed.memoryIds) {
+              const mem = await titan.get(id);
+              if (mem) memories.push(mem);
+            }
+          } else {
+            const recallResult = await titan.recall(parsed.query, { limit: 20 });
+            if ('fusedMemories' in recallResult) {
+              memories = recallResult.fusedMemories;
+            }
+          }
+          result = titan.checkCategorySufficiency(memories, parsed.query);
           break;
         }
 

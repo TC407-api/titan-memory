@@ -51,6 +51,16 @@ import { BehavioralValidator, ValidationReport, QualityScore } from './validatio
 import { AdaptiveMemory, FusionResult } from './adaptive/adaptive-memory.js';
 import { ContinualLearner } from './learning/continual-learner.js';
 
+// CatBrain imports
+import { CatBrainPipeline } from './catbrain/pipeline.js';
+import { CategorySummarizer } from './catbrain/summarizer.js';
+import { IntentGuardrails } from './catbrain/guardrails.js';
+import { DriftMonitor } from './catbrain/drift-monitor.js';
+import { ProjectHooksManager } from './catbrain/project-hooks.js';
+import type { MemoryCategory, CategoryClassification, SufficiencyResult } from './catbrain/types.js';
+import { classifyContent } from './catbrain/classifier.js';
+import { checkSufficiency, getRelevantCategories } from './catbrain/retrieval.js';
+
 // MIRAS Enhancement imports
 import { createEmbeddingGenerator, IEmbeddingGenerator } from './storage/index.js';
 import { SemanticHighlighter, createSemanticHighlighter } from './utils/semantic-highlight.js';
@@ -89,6 +99,13 @@ export class TitanMemory {
   private validator: BehavioralValidator;
   private adaptiveMemory: AdaptiveMemory;
   private continualLearner: ContinualLearner;
+
+  // CatBrain Systems
+  private catBrainPipeline?: CatBrainPipeline;
+  private categorySummarizer?: CategorySummarizer;
+  private intentGuardrails?: IntentGuardrails;
+  private driftMonitor?: DriftMonitor;
+  private projectHooks?: ProjectHooksManager;
 
   // MIRAS Enhancement Systems
   private embeddingGenerator?: IEmbeddingGenerator;
@@ -134,6 +151,9 @@ export class TitanMemory {
 
     // MIRAS Enhancements: Initialize based on config
     this.initializeMirasEnhancements();
+
+    // CatBrain: Initialize if enabled
+    this.initializeCatBrain();
   }
 
   /**
@@ -190,6 +210,50 @@ export class TitanMemory {
     if (config.crossProject.enabled) {
       this.crossProjectLearner = createCrossProjectLearningManager(config.crossProject);
       this.patternMatcher = createPatternMatcher(this.embeddingGenerator);
+    }
+  }
+
+  /**
+   * Initialize CatBrain systems based on configuration
+   */
+  private initializeCatBrain(): void {
+    const config = loadConfig();
+    const catBrainConfig = config.catBrain;
+
+    if (!catBrainConfig?.enabled) return;
+
+    try {
+      // Core pipeline (uses existing semantic highlighter)
+      this.catBrainPipeline = new CatBrainPipeline(
+        catBrainConfig,
+        this.semanticHighlighter
+      );
+
+      // Category summarizer
+      this.categorySummarizer = new CategorySummarizer();
+
+      // Intent guardrails
+      if (catBrainConfig.enableGuardrails) {
+        this.intentGuardrails = new IntentGuardrails(catBrainConfig);
+      }
+
+      // Drift monitor
+      if (catBrainConfig.enableDriftMonitor) {
+        this.driftMonitor = new DriftMonitor({
+          enabled: true,
+          alertThreshold: 0.7,
+        });
+      }
+
+      // Project hooks
+      if (catBrainConfig.enableProjectHooks) {
+        this.projectHooks = new ProjectHooksManager({
+          enabled: true,
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to initialize CatBrain:', error);
+      this.catBrainPipeline = undefined;
     }
   }
 
@@ -399,6 +463,18 @@ export class TitanMemory {
 
     const decision = this.gateStore(content);
 
+    // CatBrain Hook 1: Classify content and enrich metadata
+    let catBrainMeta: Record<string, unknown> = {};
+    if (this.catBrainPipeline) {
+      try {
+        const pipelineResult = this.catBrainPipeline.processForStore(content);
+        catBrainMeta = pipelineResult.enrichedMetadata;
+      } catch (error) {
+        // CatBrain failures are non-blocking
+        console.warn('CatBrain classification failed:', error);
+      }
+    }
+
     // Phase 3: Get context inheritance from world model
     const activeContext = this.worldModel.getWorldState().activeContext;
     const inheritance = await this.worldModel.getContextInheritance(activeContext);
@@ -409,6 +485,7 @@ export class TitanMemory {
       timestamp: new Date(),
       metadata: {
         ...metadata,
+        ...catBrainMeta,
         routingReason: decision.reason,
         tags: [...(metadata?.tags || []), ...inheritedTags],
       },
@@ -471,6 +548,18 @@ export class TitanMemory {
 
       // Process for continual learning
       await this.continualLearner.processNewMemory(memory);
+
+      // CatBrain Hook 2: Update category summaries
+      if (this.categorySummarizer && memory.metadata?.category) {
+        try {
+          this.categorySummarizer.updateSummary(
+            memory.metadata.category as MemoryCategory,
+            content
+          );
+        } catch {
+          // Non-critical
+        }
+      }
 
       // Check for catastrophic forgetting
       const forgettingRisk = await this.continualLearner.checkForgettingRisk();
@@ -549,6 +638,21 @@ export class TitanMemory {
     // Phase 3: Record access for each returned memory
     for (const memory of fusedMemories) {
       await this.adaptiveMemory.recordAccess(memory.id, query);
+    }
+
+    // CatBrain Hook 3: Enrich results with category info
+    if (this.catBrainPipeline) {
+      try {
+        for (const memory of fusedMemories) {
+          if (!memory.metadata.category) {
+            const classification = classifyContent(memory.content);
+            memory.metadata.category = classification.category;
+            memory.metadata.categoryConfidence = classification.confidence;
+          }
+        }
+      } catch {
+        // Non-critical
+      }
     }
 
     const totalQueryTimeMs = performance.now() - startTime;
@@ -1589,7 +1693,82 @@ export class TitanMemory {
       };
     }
 
+    // Include CatBrain status
+    (result as Record<string, unknown>).catBrain = this.getCatBrainStatus();
+
     return result;
+  }
+
+  // ==================== CatBrain API Methods ====================
+
+  /**
+   * Classify content into a memory category
+   */
+  classifyContent(content: string): CategoryClassification {
+    return classifyContent(content);
+  }
+
+  /**
+   * Get category summary for a specific category
+   */
+  getCategorySummary(category: MemoryCategory): { category: string; summary: string; entryCount: number; version: number } | null {
+    if (!this.categorySummarizer) return null;
+    const summary = this.categorySummarizer.getSummary(category);
+    if (!summary) return null;
+    return {
+      category: summary.category,
+      summary: summary.summary,
+      entryCount: summary.entryCount,
+      version: summary.version,
+    };
+  }
+
+  /**
+   * Check sufficiency of recall results across categories
+   */
+  checkCategorySufficiency(memories: MemoryEntry[], query: string): SufficiencyResult {
+    const targetCategories = getRelevantCategories(query);
+    return checkSufficiency(memories, targetCategories);
+  }
+
+  /**
+   * Inspect a tool call via intent guardrails
+   */
+  inspectIntent(toolName: string, args: Record<string, unknown>): { action: string; reason: string; rule?: string } {
+    if (!this.intentGuardrails) {
+      return { action: 'allow', reason: 'Guardrails not enabled' };
+    }
+    return this.intentGuardrails.inspect(toolName, args);
+  }
+
+  /**
+   * Record drift feedback for a categorized memory
+   */
+  recordDriftFeedback(memoryId: string, category: MemoryCategory, signal: 'helpful' | 'harmful'): void {
+    if (this.driftMonitor) {
+      this.driftMonitor.recordFeedback(memoryId, category, signal);
+    }
+  }
+
+  /**
+   * Get CatBrain status for MIRAS stats
+   */
+  getCatBrainStatus(): {
+    enabled: boolean;
+    pipelineActive: boolean;
+    guardrailsEnabled: boolean;
+    driftMonitorEnabled: boolean;
+    projectHooksEnabled: boolean;
+    categorySummaries: number;
+  } {
+    return {
+      enabled: !!this.catBrainPipeline,
+      pipelineActive: this.catBrainPipeline?.isEnabled() ?? false,
+      guardrailsEnabled: this.intentGuardrails?.isEnabled() ?? false,
+      driftMonitorEnabled: this.driftMonitor?.isEnabled() ?? false,
+      projectHooksEnabled: this.projectHooks?.isEnabled() ?? false,
+      categorySummaries: this.categorySummarizer?.getAllSummaries().length ?? 0,
+    };
   }
 
   /**
