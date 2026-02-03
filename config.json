@@ -1,0 +1,68 @@
+{
+  "surpriseThreshold": 0.3,
+  "decayHalfLife": 180,
+  "maxMemoriesPerLayer": 10000,
+  "enablePreCompactionFlush": true,
+  "enableSurpriseFiltering": true,
+  "enableContinualLearning": true,
+  "offlineMode": false,
+
+  "catBrain": {
+    "enabled": true,
+    "retrieveCount": 50,
+    "highlightThreshold": 0.8,
+    "classifierConfidenceThreshold": 0.6,
+    "enableGuardrails": true,
+    "enableDriftMonitor": true,
+    "enableProjectHooks": false,
+    "bedrockRulesPath": ""
+  },
+
+  "embedding": {
+    "provider": "voyage",
+    "model": "voyage-3-large",
+    "dimension": 1024,
+    "cacheSize": 10000,
+    "batchSize": 32,
+    "timeout": 30000
+  },
+
+  "semanticSurprise": {
+    "algorithm": "semantic",
+    "similarityThreshold": 0.7,
+    "comparisionLimit": 50
+  },
+
+  "dataDependentDecay": {
+    "strategy": "data-dependent",
+    "utilityWeight": 1.0,
+    "accessWeight": 1.0
+  },
+
+  "hybridSearch": {
+    "enabled": true,
+    "rerankStrategy": "rrf",
+    "rrfK": 60,
+    "denseWeight": 0.5,
+    "sparseWeight": 0.5,
+    "candidateMultiplier": 3,
+    "bm25K1": 1.2,
+    "bm25B": 0.75
+  },
+
+  "proactiveSuggestions": {
+    "enabled": true,
+    "maxSuggestions": 5,
+    "minUtility": 0.6,
+    "minRelevance": 0.5,
+    "includeHighlighting": true
+  },
+
+  "crossProject": {
+    "enabled": true,
+    "minApplicability": 0.7,
+    "minRelevance": 0.6,
+    "maxPatternsPerQuery": 10,
+    "decayHalfLifeDays": 180
+  }
+}

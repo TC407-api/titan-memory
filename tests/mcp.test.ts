@@ -5,8 +5,8 @@
 import { ToolHandler, ToolDefinitions } from '../src/mcp/tools';
 
 describe('MCP Tool Definitions', () => {
-  it('should have 13 tools defined', () => {
-    expect(ToolDefinitions).toHaveLength(13);
+  it('should have 16 tools defined', () => {
+    expect(ToolDefinitions).toHaveLength(16);
   });
 
   it('should have correct tool names', () => {
@@ -25,6 +25,10 @@ describe('MCP Tool Definitions', () => {
     expect(toolNames).toContain('titan_suggest');
     expect(toolNames).toContain('titan_patterns');
     expect(toolNames).toContain('titan_miras_stats');
+    // CatBrain tools
+    expect(toolNames).toContain('titan_classify');
+    expect(toolNames).toContain('titan_category_summary');
+    expect(toolNames).toContain('titan_sufficiency');
   });
 
   it('should have required fields in tool definitions', () => {
