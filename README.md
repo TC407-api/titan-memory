@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="assets/titan-banner.png" alt="Titan Memory" width="700">
+  <img src="assets/titan-hero.jpeg" alt="Titan Memory — Persistent Memory from the Gods" width="900">
 </p>
 
 <h1 align="center">Titan Memory</h1>
 
 <p align="center">
-  <strong>The cognitive memory layer that AI should have been born with.</strong>
+  <strong>Persistent Memory from the Gods — The cognitive memory layer that AI should have been born with.</strong>
 </p>
 
 <p align="center">
