@@ -86,18 +86,18 @@ export const ToolSchemas = {
   // MIRAS Enhancement: Get MIRAS Stats
   titan_miras_stats: z.object({}),
 
-  // CatBrain: Classify content
+  // Cortex: Classify content
   titan_classify: z.object({
     content: z.string().describe('Content to classify into a memory category'),
   }),
 
-  // CatBrain: Get category summary
+  // Cortex: Get category summary
   titan_category_summary: z.object({
     category: z.enum(['knowledge', 'profile', 'event', 'behavior', 'skill'])
       .describe('Memory category to get summary for'),
   }),
 
-  // CatBrain: Check category sufficiency
+  // Cortex: Check category sufficiency
   titan_sufficiency: z.object({
     query: z.string().describe('Query to check category coverage for'),
     memoryIds: z.array(z.string()).optional().describe('Specific memory IDs to check (uses recent recall if not provided)'),
@@ -273,7 +273,7 @@ export const ToolDefinitions = [
   },
   {
     name: 'titan_classify',
-    description: 'CatBrain: Classify content into a memory category (knowledge/profile/event/behavior/skill). Returns category, confidence, and method.',
+    description: 'Cortex: Classify content into a memory category (knowledge/profile/event/behavior/skill). Returns category, confidence, and method.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -284,7 +284,7 @@ export const ToolDefinitions = [
   },
   {
     name: 'titan_category_summary',
-    description: 'CatBrain: Get rolling summary for a specific memory category.',
+    description: 'Cortex: Get rolling summary for a specific memory category.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -299,7 +299,7 @@ export const ToolDefinitions = [
   },
   {
     name: 'titan_sufficiency',
-    description: 'CatBrain: Check category coverage of recall results. Reports missing categories and coverage ratio.',
+    description: 'Cortex: Check category coverage of recall results. Reports missing categories and coverage ratio.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -492,9 +492,9 @@ export class ToolHandler {
 
         case 'titan_category_summary': {
           const parsed = ToolSchemas.titan_category_summary.parse(args);
-          const summary = titan.getCategorySummary(parsed.category as import('../catbrain/types.js').MemoryCategory);
+          const summary = titan.getCategorySummary(parsed.category as import('../cortex/types.js').MemoryCategory);
           if (!summary) {
-            result = { error: 'CatBrain not enabled or no summary available for this category' };
+            result = { error: 'Cortex not enabled or no summary available for this category' };
           } else {
             result = summary;
           }

@@ -32,7 +32,7 @@ export interface MemoryMetadata {
   tags?: string[];
   routingReason?: string;
 
-  // CatBrain: Category classification
+  // Cortex: Category classification
   category?: string;
   categoryConfidence?: number;
   entityStatus?: string;
@@ -181,8 +181,8 @@ export interface TitanConfig {
   contextFlushThreshold: number;  // Default: 0.5 (50%)
   enableProactiveFlush: boolean;  // Default: true
 
-  // CatBrain Configuration
-  catBrain: {
+  // Cortex Configuration
+  cortex: {
     enabled: boolean;
     retrieveCount: number;
     highlightThreshold: number;

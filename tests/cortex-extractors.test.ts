@@ -1,10 +1,10 @@
 /**
- * CatBrain Extractors Tests
+ * Cortex Extractors Tests
  */
 
-import { extractByCategory } from '../src/catbrain/extractors';
+import { extractByCategory } from '../src/cortex/extractors';
 
-describe('CatBrain Extractors', () => {
+describe('Cortex Extractors', () => {
   describe('Knowledge Extraction', () => {
     it('should extract definitions', () => {
       const result = extractByCategory('REST is defined as Representational State Transfer', 'knowledge');

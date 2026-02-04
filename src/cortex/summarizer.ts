@@ -1,5 +1,5 @@
 /**
- * CatBrain Category Summarizer
+ * Cortex Category Summarizer
  * Add/update only - NEVER deletes (from memU's category.py)
  * Maintains versioned summaries per category
  */

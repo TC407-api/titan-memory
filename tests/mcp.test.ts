@@ -25,7 +25,7 @@ describe('MCP Tool Definitions', () => {
     expect(toolNames).toContain('titan_suggest');
     expect(toolNames).toContain('titan_patterns');
     expect(toolNames).toContain('titan_miras_stats');
-    // CatBrain tools
+    // Cortex tools
     expect(toolNames).toContain('titan_classify');
     expect(toolNames).toContain('titan_category_summary');
     expect(toolNames).toContain('titan_sufficiency');

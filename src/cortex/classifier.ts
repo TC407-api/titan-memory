@@ -1,5 +1,5 @@
 /**
- * CatBrain Category Classifier
+ * Cortex Category Classifier
  * Hybrid regex + semantic classification for memory content
  */
 

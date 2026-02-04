@@ -1,12 +1,12 @@
 /**
- * CatBrain "5-Year-Old Test" - Adversarial Input Tests
+ * Cortex "5-Year-Old Test" - Adversarial Input Tests
  * Tests that guardrails hold under bypass attempts
  */
 
-import { IntentGuardrails } from '../src/catbrain/guardrails';
-import { BedrockRulesManager } from '../src/catbrain/bedrock-rules';
+import { IntentGuardrails } from '../src/cortex/guardrails';
+import { BedrockRulesManager } from '../src/cortex/bedrock-rules';
 
-describe('CatBrain 5-Year-Old Test', () => {
+describe('Cortex 5-Year-Old Test', () => {
   let guardrails: IntentGuardrails;
 
   beforeEach(() => {

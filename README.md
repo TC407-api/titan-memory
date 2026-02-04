@@ -587,6 +587,8 @@ Titan Memory synthesizes breakthrough research from nine distinct systems into a
 | [Mem0](https://github.com/mem0ai/mem0) | Adaptive memory with consolidation |
 | [Voyage AI](https://www.voyageai.com/) | State-of-the-art embedding models |
 | [Zilliz Semantic Highlight](https://huggingface.co/zilliz/semantic-highlight-bilingual-v1) | 0.6B sentence-level relevance scoring |
+| [IndyDevDan](https://www.youtube.com/@indydevdan) | Claude Code agentic architecture patterns and multi-agent orchestration |
+| [Claude (Anthropic)](https://www.anthropic.com/) | Co-architect and implementation partner |
 
 ---
 

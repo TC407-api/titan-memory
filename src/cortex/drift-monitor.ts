@@ -1,5 +1,5 @@
 /**
- * CatBrain Drift Monitor
+ * Cortex Drift Monitor
  * Tracks classification accuracy via utility feedback
  * Documents every "Right" vs "Wrong" (self-healing logic)
  */

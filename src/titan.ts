@@ -51,15 +51,15 @@ import { BehavioralValidator, ValidationReport, QualityScore } from './validatio
 import { AdaptiveMemory, FusionResult } from './adaptive/adaptive-memory.js';
 import { ContinualLearner } from './learning/continual-learner.js';
 
-// CatBrain imports
-import { CatBrainPipeline } from './catbrain/pipeline.js';
-import { CategorySummarizer } from './catbrain/summarizer.js';
-import { IntentGuardrails } from './catbrain/guardrails.js';
-import { DriftMonitor } from './catbrain/drift-monitor.js';
-import { ProjectHooksManager } from './catbrain/project-hooks.js';
-import type { MemoryCategory, CategoryClassification, SufficiencyResult } from './catbrain/types.js';
-import { classifyContent } from './catbrain/classifier.js';
-import { checkSufficiency, getRelevantCategories } from './catbrain/retrieval.js';
+// Cortex imports
+import { CortexPipeline } from './cortex/pipeline.js';
+import { CategorySummarizer } from './cortex/summarizer.js';
+import { IntentGuardrails } from './cortex/guardrails.js';
+import { DriftMonitor } from './cortex/drift-monitor.js';
+import { ProjectHooksManager } from './cortex/project-hooks.js';
+import type { MemoryCategory, CategoryClassification, SufficiencyResult } from './cortex/types.js';
+import { classifyContent } from './cortex/classifier.js';
+import { checkSufficiency, getRelevantCategories } from './cortex/retrieval.js';
 
 // MIRAS Enhancement imports
 import { createEmbeddingGenerator, IEmbeddingGenerator } from './storage/index.js';
@@ -100,8 +100,8 @@ export class TitanMemory {
   private adaptiveMemory: AdaptiveMemory;
   private continualLearner: ContinualLearner;
 
-  // CatBrain Systems
-  private catBrainPipeline?: CatBrainPipeline;
+  // Cortex Systems
+  private cortexPipeline?: CortexPipeline;
   private categorySummarizer?: CategorySummarizer;
   private intentGuardrails?: IntentGuardrails;
   private driftMonitor?: DriftMonitor;
@@ -152,8 +152,8 @@ export class TitanMemory {
     // MIRAS Enhancements: Initialize based on config
     this.initializeMirasEnhancements();
 
-    // CatBrain: Initialize if enabled
-    this.initializeCatBrain();
+    // Cortex: Initialize if enabled
+    this.initializeCortex();
   }
 
   /**
@@ -214,18 +214,18 @@ export class TitanMemory {
   }
 
   /**
-   * Initialize CatBrain systems based on configuration
+   * Initialize Cortex systems based on configuration
    */
-  private initializeCatBrain(): void {
+  private initializeCortex(): void {
     const config = loadConfig();
-    const catBrainConfig = config.catBrain;
+    const cortexConfig = config.cortex;
 
-    if (!catBrainConfig?.enabled) return;
+    if (!cortexConfig?.enabled) return;
 
     try {
       // Core pipeline (uses existing semantic highlighter)
-      this.catBrainPipeline = new CatBrainPipeline(
-        catBrainConfig,
+      this.cortexPipeline = new CortexPipeline(
+        cortexConfig,
         this.semanticHighlighter
       );
 
@@ -233,12 +233,12 @@ export class TitanMemory {
       this.categorySummarizer = new CategorySummarizer();
 
       // Intent guardrails
-      if (catBrainConfig.enableGuardrails) {
-        this.intentGuardrails = new IntentGuardrails(catBrainConfig);
+      if (cortexConfig.enableGuardrails) {
+        this.intentGuardrails = new IntentGuardrails(cortexConfig);
       }
 
       // Drift monitor
-      if (catBrainConfig.enableDriftMonitor) {
+      if (cortexConfig.enableDriftMonitor) {
         this.driftMonitor = new DriftMonitor({
           enabled: true,
           alertThreshold: 0.7,
@@ -246,14 +246,14 @@ export class TitanMemory {
       }
 
       // Project hooks
-      if (catBrainConfig.enableProjectHooks) {
+      if (cortexConfig.enableProjectHooks) {
         this.projectHooks = new ProjectHooksManager({
           enabled: true,
         });
       }
     } catch (error) {
-      console.warn('Failed to initialize CatBrain:', error);
-      this.catBrainPipeline = undefined;
+      console.warn('Failed to initialize Cortex:', error);
+      this.cortexPipeline = undefined;
     }
   }
 
@@ -463,15 +463,15 @@ export class TitanMemory {
 
     const decision = this.gateStore(content);
 
-    // CatBrain Hook 1: Classify content and enrich metadata
-    let catBrainMeta: Record<string, unknown> = {};
-    if (this.catBrainPipeline) {
+    // Cortex Hook 1: Classify content and enrich metadata
+    let cortexMeta: Record<string, unknown> = {};
+    if (this.cortexPipeline) {
       try {
-        const pipelineResult = this.catBrainPipeline.processForStore(content);
-        catBrainMeta = pipelineResult.enrichedMetadata;
+        const pipelineResult = this.cortexPipeline.processForStore(content);
+        cortexMeta = pipelineResult.enrichedMetadata;
       } catch (error) {
-        // CatBrain failures are non-blocking
-        console.warn('CatBrain classification failed:', error);
+        // Cortex failures are non-blocking
+        console.warn('Cortex classification failed:', error);
       }
     }
 
@@ -485,7 +485,7 @@ export class TitanMemory {
       timestamp: new Date(),
       metadata: {
         ...metadata,
-        ...catBrainMeta,
+        ...cortexMeta,
         routingReason: decision.reason,
         tags: [...(metadata?.tags || []), ...inheritedTags],
       },
@@ -549,7 +549,7 @@ export class TitanMemory {
       // Process for continual learning
       await this.continualLearner.processNewMemory(memory);
 
-      // CatBrain Hook 2: Update category summaries
+      // Cortex Hook 2: Update category summaries
       if (this.categorySummarizer && memory.metadata?.category) {
         try {
           this.categorySummarizer.updateSummary(
@@ -640,8 +640,8 @@ export class TitanMemory {
       await this.adaptiveMemory.recordAccess(memory.id, query);
     }
 
-    // CatBrain Hook 3: Enrich results with category info
-    if (this.catBrainPipeline) {
+    // Cortex Hook 3: Enrich results with category info
+    if (this.cortexPipeline) {
       try {
         for (const memory of fusedMemories) {
           if (!memory.metadata.category) {
@@ -655,14 +655,14 @@ export class TitanMemory {
       }
     }
 
-    // CatBrain Hook 4: Run Librarian pipeline - semantic highlight, prune, reconstruct
+    // Cortex Hook 4: Run Librarian pipeline - semantic highlight, prune, reconstruct
     const config = loadConfig();
     let highlightedContext: string | undefined;
     let highlightStats: UnifiedQueryResult['highlightStats'] | undefined;
 
-    if (this.catBrainPipeline && config.semanticHighlight?.highlightOnRecall !== false) {
+    if (this.cortexPipeline && config.semanticHighlight?.highlightOnRecall !== false) {
       try {
-        const librarianResult = await this.catBrainPipeline.processForRecall(query, fusedMemories);
+        const librarianResult = await this.cortexPipeline.processForRecall(query, fusedMemories);
         if (librarianResult.goldSentences.length > 0) {
           highlightedContext = librarianResult.goldSentences.map(s => s.text).join(' ');
           highlightStats = {
@@ -1717,13 +1717,13 @@ export class TitanMemory {
       };
     }
 
-    // Include CatBrain status
-    (result as Record<string, unknown>).catBrain = this.getCatBrainStatus();
+    // Include Cortex status
+    (result as Record<string, unknown>).cortex = this.getCortexStatus();
 
     return result;
   }
 
-  // ==================== CatBrain API Methods ====================
+  // ==================== Cortex API Methods ====================
 
   /**
    * Classify content into a memory category
@@ -1775,9 +1775,9 @@ export class TitanMemory {
   }
 
   /**
-   * Get CatBrain status for MIRAS stats
+   * Get Cortex status for MIRAS stats
    */
-  getCatBrainStatus(): {
+  getCortexStatus(): {
     enabled: boolean;
     pipelineActive: boolean;
     guardrailsEnabled: boolean;
@@ -1786,8 +1786,8 @@ export class TitanMemory {
     categorySummaries: number;
   } {
     return {
-      enabled: !!this.catBrainPipeline,
-      pipelineActive: this.catBrainPipeline?.isEnabled() ?? false,
+      enabled: !!this.cortexPipeline,
+      pipelineActive: this.cortexPipeline?.isEnabled() ?? false,
       guardrailsEnabled: this.intentGuardrails?.isEnabled() ?? false,
       driftMonitorEnabled: this.driftMonitor?.isEnabled() ?? false,
       projectHooksEnabled: this.projectHooks?.isEnabled() ?? false,

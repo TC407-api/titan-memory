@@ -1,6 +1,6 @@
 /**
- * CatBrain Integration Tests
- * Tests CatBrain integrated into TitanMemory
+ * Cortex Integration Tests
+ * Tests Cortex integrated into TitanMemory
  */
 
 import * as os from 'os';
@@ -9,12 +9,12 @@ import * as fs from 'fs';
 import { TitanMemory } from '../src/titan';
 import { updateConfig, resetConfig } from '../src/utils/config';
 
-describe('CatBrain Integration', () => {
+describe('Cortex Integration', () => {
   let titan: TitanMemory;
   let testDir: string;
 
   beforeAll(async () => {
-    testDir = path.join(os.tmpdir(), `titan-catbrain-test-${Date.now()}`);
+    testDir = path.join(os.tmpdir(), `titan-cortex-test-${Date.now()}`);
     fs.mkdirSync(testDir, { recursive: true });
 
     resetConfig();
@@ -24,7 +24,7 @@ describe('CatBrain Integration', () => {
       factualDbPath: path.join(testDir, 'facts.db'),
       memoryMdPath: path.join(testDir, 'MEMORY.md'),
       offlineMode: true,
-      catBrain: {
+      cortex: {
         enabled: true,
         retrieveCount: 50,
         highlightThreshold: 0.3,
@@ -46,7 +46,7 @@ describe('CatBrain Integration', () => {
     resetConfig();
   });
 
-  describe('With CatBrain Enabled', () => {
+  describe('With Cortex Enabled', () => {
     it('should classify content via titan API', () => {
       const result = titan.classifyContent('API rate limit is 1000 per hour');
       expect(result.category).toBe('knowledge');
@@ -71,8 +71,8 @@ describe('CatBrain Integration', () => {
       expect(entry.metadata.category).toBe('profile');
     });
 
-    it('should get CatBrain status', () => {
-      const status = titan.getCatBrainStatus();
+    it('should get Cortex status', () => {
+      const status = titan.getCortexStatus();
       expect(status.enabled).toBe(true);
       expect(status.pipelineActive).toBe(true);
       expect(status.guardrailsEnabled).toBe(true);
@@ -109,12 +109,12 @@ describe('CatBrain Integration', () => {
     });
   });
 
-  describe('With CatBrain Disabled', () => {
+  describe('With Cortex Disabled', () => {
     let titanDisabled: TitanMemory;
     let disabledDir: string;
 
     beforeAll(async () => {
-      disabledDir = path.join(os.tmpdir(), `titan-catbrain-disabled-${Date.now()}`);
+      disabledDir = path.join(os.tmpdir(), `titan-cortex-disabled-${Date.now()}`);
       fs.mkdirSync(disabledDir, { recursive: true });
 
       resetConfig();
@@ -124,7 +124,7 @@ describe('CatBrain Integration', () => {
         factualDbPath: path.join(disabledDir, 'facts.db'),
         memoryMdPath: path.join(disabledDir, 'MEMORY.md'),
         offlineMode: true,
-        catBrain: {
+        cortex: {
           enabled: false,
           retrieveCount: 50,
           highlightThreshold: 0.8,
@@ -148,12 +148,12 @@ describe('CatBrain Integration', () => {
     it('should add memories without category metadata', async () => {
       const entry = await titanDisabled.add('Simple test memory');
       expect(entry).toBeDefined();
-      // Category may not be set since CatBrain is disabled
+      // Category may not be set since Cortex is disabled
       expect(entry.metadata.category).toBeUndefined();
     });
 
-    it('should show CatBrain as disabled', () => {
-      const status = titanDisabled.getCatBrainStatus();
+    it('should show Cortex as disabled', () => {
+      const status = titanDisabled.getCortexStatus();
       expect(status.enabled).toBe(false);
       expect(status.pipelineActive).toBe(false);
     });

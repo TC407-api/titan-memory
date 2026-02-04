@@ -1,5 +1,5 @@
 /**
- * CatBrain Hierarchical Retrieval
+ * Cortex Hierarchical Retrieval
  * Category-aware retrieval wrapping fuseResults
  */
 

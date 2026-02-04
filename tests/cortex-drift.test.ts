@@ -1,10 +1,10 @@
 /**
- * CatBrain Drift Monitor Tests
+ * Cortex Drift Monitor Tests
  */
 
-import { DriftMonitor } from '../src/catbrain/drift-monitor';
+import { DriftMonitor } from '../src/cortex/drift-monitor';
 
-describe('CatBrain Drift Monitor', () => {
+describe('Cortex Drift Monitor', () => {
   describe('When Disabled', () => {
     it('should not record entries', () => {
       const monitor = new DriftMonitor({ enabled: false });

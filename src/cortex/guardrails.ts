@@ -1,10 +1,10 @@
 /**
- * CatBrain Intent Guardrails - The "Safety Inspector"
+ * Cortex Intent Guardrails - The "Safety Inspector"
  * Semantically inspects intent of every tool call
  * Can return "Permission Denied: Semantic Conflict" even with --dangerously-skip-permissions
  */
 
-import { GuardrailResult, CatBrainConfig, DEFAULT_CATBRAIN_CONFIG } from './types.js';
+import { GuardrailResult, CortexConfig, DEFAULT_CATBRAIN_CONFIG } from './types.js';
 import { BedrockRulesManager } from './bedrock-rules.js';
 
 /**
@@ -14,7 +14,7 @@ export class IntentGuardrails {
   private bedrockRules: BedrockRulesManager;
   private enabled: boolean;
 
-  constructor(config?: Partial<CatBrainConfig>) {
+  constructor(config?: Partial<CortexConfig>) {
     const cfg = { ...DEFAULT_CATBRAIN_CONFIG, ...config };
     this.enabled = cfg.enableGuardrails;
     this.bedrockRules = new BedrockRulesManager(cfg.bedrockRulesPath);

@@ -1,8 +1,8 @@
 /**
- * CatBrain Summarizer Tests
+ * Cortex Summarizer Tests
  */
 
-import { CategorySummarizer } from '../src/catbrain/summarizer';
+import { CategorySummarizer } from '../src/cortex/summarizer';
 
 describe('CategorySummarizer', () => {
   let summarizer: CategorySummarizer;

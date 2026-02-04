@@ -1,5 +1,5 @@
 /**
- * CatBrain Project Hooks
+ * Cortex Project Hooks
  * Auto-recall/flush on directory change (Astral uv integration)
  */
 

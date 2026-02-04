@@ -1,15 +1,15 @@
 /**
- * CatBrain Pipeline Tests
+ * Cortex Pipeline Tests
  */
 
-import { CatBrainPipeline } from '../src/catbrain/pipeline';
+import { CortexPipeline } from '../src/cortex/pipeline';
 import { MemoryEntry, MemoryLayer } from '../src/types';
 
-describe('CatBrain Pipeline', () => {
-  let pipeline: CatBrainPipeline;
+describe('Cortex Pipeline', () => {
+  let pipeline: CortexPipeline;
 
   beforeEach(() => {
-    pipeline = new CatBrainPipeline({ enabled: true, highlightThreshold: 0.3 });
+    pipeline = new CortexPipeline({ enabled: true, highlightThreshold: 0.3 });
   });
 
   describe('processForStore', () => {
@@ -93,10 +93,10 @@ describe('CatBrain Pipeline', () => {
 
   describe('Configuration', () => {
     it('should respect enabled flag', () => {
-      const enabled = new CatBrainPipeline({ enabled: true });
+      const enabled = new CortexPipeline({ enabled: true });
       expect(enabled.isEnabled()).toBe(true);
 
-      const disabled = new CatBrainPipeline({ enabled: false });
+      const disabled = new CortexPipeline({ enabled: false });
       expect(disabled.isEnabled()).toBe(false);
     });
 

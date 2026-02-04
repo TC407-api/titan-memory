@@ -1,10 +1,10 @@
 /**
- * CatBrain Guardrails Tests
+ * Cortex Guardrails Tests
  */
 
-import { IntentGuardrails } from '../src/catbrain/guardrails';
+import { IntentGuardrails } from '../src/cortex/guardrails';
 
-describe('CatBrain Guardrails', () => {
+describe('Cortex Guardrails', () => {
   describe('When Disabled', () => {
     it('should allow all calls', () => {
       const guardrails = new IntentGuardrails({ enableGuardrails: false });

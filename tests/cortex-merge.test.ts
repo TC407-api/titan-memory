@@ -1,11 +1,11 @@
 /**
- * CatBrain Merge Strategy Tests
+ * Cortex Merge Strategy Tests
  */
 
-import { mergeByCategory } from '../src/catbrain/merge-strategy';
+import { mergeByCategory } from '../src/cortex/merge-strategy';
 import { MemoryEntry, MemoryLayer } from '../src/types';
 
-describe('CatBrain Merge Strategy', () => {
+describe('Cortex Merge Strategy', () => {
   const createMemory = (id: string, content: string, daysAgo: number = 0): MemoryEntry => ({
     id,
     content,

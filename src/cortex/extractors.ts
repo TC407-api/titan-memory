@@ -1,5 +1,5 @@
 /**
- * CatBrain Category-Specific Extractors
+ * Cortex Category-Specific Extractors
  * Extracts structured fields based on memory category
  */
 

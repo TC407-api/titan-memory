@@ -1,5 +1,5 @@
 /**
- * CatBrain Category-Aware Merge Strategy
+ * Cortex Category-Aware Merge Strategy
  * Different merge rules per category type
  */
 

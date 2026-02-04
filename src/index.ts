@@ -39,5 +39,5 @@ export * from './dashboard/index.js';
 // Phase 6: Hot-Reload Skill System
 export * from './skills/index.js';
 
-// CatBrain: 5-Type Memory Categorization System
-export * from './catbrain/index.js';
+// Cortex: 5-Type Memory Categorization System
+export * from './cortex/index.js';

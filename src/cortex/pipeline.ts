@@ -1,5 +1,5 @@
 /**
- * CatBrain Pipeline - The "Librarian" Recall Logic
+ * Cortex Pipeline - The "Librarian" Recall Logic
  *
  * Store Path: Content In -> Classify -> Extract -> Tag entity status -> Store
  * Recall Path: Query -> Retrieve 50+ chunks -> Sentence Split -> Semantic Highlight
@@ -11,23 +11,23 @@ import { MemoryEntry } from '../types.js';
 import { SemanticHighlighter } from '../utils/semantic-highlight.js';
 import {
   MemoryCategory,
-  CatBrainPipelineResult,
+  CortexPipelineResult,
   GoldSentence,
   LibrarianResult,
-  CatBrainConfig,
+  CortexConfig,
   DEFAULT_CATBRAIN_CONFIG,
 } from './types.js';
 import { classifyContent } from './classifier.js';
 import { extractByCategory } from './extractors.js';
 
 /**
- * CatBrain Pipeline orchestrator
+ * Cortex Pipeline orchestrator
  */
-export class CatBrainPipeline {
-  private config: CatBrainConfig;
+export class CortexPipeline {
+  private config: CortexConfig;
   private highlighter?: SemanticHighlighter;
 
-  constructor(config?: Partial<CatBrainConfig>, highlighter?: SemanticHighlighter) {
+  constructor(config?: Partial<CortexConfig>, highlighter?: SemanticHighlighter) {
     this.config = { ...DEFAULT_CATBRAIN_CONFIG, ...config };
     this.highlighter = highlighter;
   }
@@ -35,7 +35,7 @@ export class CatBrainPipeline {
   /**
    * STORE PATH: Classify content and enrich metadata
    */
-  processForStore(content: string): CatBrainPipelineResult {
+  processForStore(content: string): CortexPipelineResult {
     const classification = classifyContent(content);
     const extraction = extractByCategory(content, classification.category);
 
@@ -128,7 +128,7 @@ export class CatBrainPipeline {
   }
 
   /**
-   * Check if CatBrain pipeline is enabled
+   * Check if Cortex pipeline is enabled
    */
   isEnabled(): boolean {
     return this.config.enabled;
@@ -137,7 +137,7 @@ export class CatBrainPipeline {
   /**
    * Update configuration
    */
-  updateConfig(config: Partial<CatBrainConfig>): void {
+  updateConfig(config: Partial<CortexConfig>): void {
     this.config = { ...this.config, ...config };
   }
 

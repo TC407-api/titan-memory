@@ -1,11 +1,11 @@
 /**
- * CatBrain Retrieval Tests
+ * Cortex Retrieval Tests
  */
 
-import { getRelevantCategories, checkSufficiency, filterByCategory, expandCategories, sortByCategoryRelevance } from '../src/catbrain/retrieval';
+import { getRelevantCategories, checkSufficiency, filterByCategory, expandCategories, sortByCategoryRelevance } from '../src/cortex/retrieval';
 import { MemoryEntry, MemoryLayer } from '../src/types';
 
-describe('CatBrain Retrieval', () => {
+describe('Cortex Retrieval', () => {
   const createMemory = (id: string, category?: string): MemoryEntry => ({
     id,
     content: `Content for ${id}`,

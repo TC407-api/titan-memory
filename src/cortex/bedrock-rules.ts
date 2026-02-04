@@ -1,5 +1,5 @@
 /**
- * CatBrain Bedrock Rules
+ * Cortex Bedrock Rules
  * Loads and enforces TITAN_RULES.json - the "Rights vs Wrongs" layer
  */
 

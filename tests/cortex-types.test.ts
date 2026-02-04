@@ -1,14 +1,14 @@
 /**
- * CatBrain Types Tests
+ * Cortex Types Tests
  */
 
 import {
   DEFAULT_CATBRAIN_CONFIG,
   CATEGORY_LAYER_MAP,
-} from '../src/catbrain/types';
+} from '../src/cortex/types';
 import { MemoryLayer } from '../src/types';
 
-describe('CatBrain Types', () => {
+describe('Cortex Types', () => {
   describe('DEFAULT_CATBRAIN_CONFIG', () => {
     it('should have all required fields', () => {
       expect(DEFAULT_CATBRAIN_CONFIG).toHaveProperty('enabled', false);

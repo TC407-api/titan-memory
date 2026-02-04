@@ -1,10 +1,10 @@
 /**
- * CatBrain Classifier Tests - 50+ test cases
+ * Cortex Classifier Tests - 50+ test cases
  */
 
-import { classifyContent, matchesCategory, getMatchingCategories, getCategoryLayer } from '../src/catbrain/classifier';
+import { classifyContent, matchesCategory, getMatchingCategories, getCategoryLayer } from '../src/cortex/classifier';
 
-describe('CatBrain Classifier', () => {
+describe('Cortex Classifier', () => {
   describe('Knowledge Classification', () => {
     it('should classify definitions', () => {
       const result = classifyContent('API rate limit is defined as 1000 requests per hour');

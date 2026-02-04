@@ -1,11 +1,11 @@
 /**
- * CatBrain Project Hooks Tests
+ * Cortex Project Hooks Tests
  */
 
-import { ProjectHooksManager } from '../src/catbrain/project-hooks';
-import { CategorySummary } from '../src/catbrain/types';
+import { ProjectHooksManager } from '../src/cortex/project-hooks';
+import { CategorySummary } from '../src/cortex/types';
 
-describe('CatBrain Project Hooks', () => {
+describe('Cortex Project Hooks', () => {
   describe('When Disabled', () => {
     it('should not execute hooks', async () => {
       const hooks = new ProjectHooksManager({ enabled: false });

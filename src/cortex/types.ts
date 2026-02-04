@@ -1,5 +1,5 @@
 /**
- * CatBrain Type Definitions
+ * Cortex Type Definitions
  * 5-type memory categorization system (memU-inspired)
  */
 
@@ -94,9 +94,9 @@ export interface SkillExtraction {
 }
 
 /**
- * Full CatBrain pipeline result
+ * Full Cortex pipeline result
  */
-export interface CatBrainPipelineResult {
+export interface CortexPipelineResult {
   classification: CategoryClassification;
   extraction: CategoryExtraction;
   enrichedMetadata: Record<string, unknown>;
@@ -146,9 +146,9 @@ export interface MergeResult {
 }
 
 /**
- * CatBrain configuration
+ * Cortex configuration
  */
-export interface CatBrainConfig {
+export interface CortexConfig {
   enabled: boolean;
   retrieveCount: number;
   highlightThreshold: number;
@@ -160,9 +160,9 @@ export interface CatBrainConfig {
 }
 
 /**
- * Default CatBrain configuration
+ * Default Cortex configuration
  */
-export const DEFAULT_CATBRAIN_CONFIG: CatBrainConfig = {
+export const DEFAULT_CATBRAIN_CONFIG: CortexConfig = {
   enabled: false,
   retrieveCount: 50,
   highlightThreshold: 0.8,

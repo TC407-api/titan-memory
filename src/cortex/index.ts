@@ -1,6 +1,6 @@
 /**
- * CatBrain - 5-Type Memory Categorization System
- * Barrel export for all CatBrain modules
+ * Cortex - 5-Type Memory Categorization System
+ * Barrel export for all Cortex modules
  */
 
 export * from './types.js';

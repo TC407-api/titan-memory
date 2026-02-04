@@ -7,7 +7,7 @@
   "enableContinualLearning": true,
   "offlineMode": false,
 
-  "catBrain": {
+  "cortex": {
     "enabled": true,
     "retrieveCount": 50,
     "highlightThreshold": 0.8,

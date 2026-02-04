@@ -38,8 +38,8 @@ const DEFAULT_CONFIG: TitanConfig = {
   contextFlushThreshold: 0.5,  // 50%
   enableProactiveFlush: true,
 
-  // CatBrain Configuration (OFF by default)
-  catBrain: {
+  // Cortex Configuration (OFF by default)
+  cortex: {
     enabled: false,
     retrieveCount: 50,
     highlightThreshold: 0.8,
