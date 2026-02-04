@@ -17,6 +17,7 @@
   <a href="#installation">Installation</a> &bull;
   <a href="#mcp-tools">MCP Tools</a> &bull;
   <a href="#enterprise">Enterprise</a> &bull;
+  <a href="#what-it-costs">Cost</a> &bull;
   <a href="#research">Research</a>
 </p>
 
@@ -523,6 +524,27 @@ AUTH0_CLIENT_ID=your-client-id
 ```bash
 curl http://localhost:3456/.well-known/oauth-authorization-server
 ```
+
+---
+
+## What It Costs
+
+Nothing. And it saves you money.
+
+| Component | Cost |
+|-----------|------|
+| Titan Memory server | **Free** — open source, Apache 2.0 |
+| Zilliz Cloud (vector storage) | **Free tier** available, pennies at scale |
+| Voyage AI (embeddings) | **Fractions of a cent** per query |
+| Zilliz 0.6B highlight model | **Free** — MIT license, runs on CPU, no GPU required |
+
+Now here's the part that matters: **the semantic highlighting actually saves you money.** Every recall query compresses retrieved context by 70-80% before it ever reaches the LLM. That means 70-80% fewer tokens on the most expensive part of your entire AI pipeline — the model inference. The more you use Titan Memory, the less you spend on your LLM.
+
+Compare that to managed memory and RAG services from Google (Vertex AI Knowledge Bases), Amazon (Bedrock Knowledge Bases), or Microsoft (Azure AI Search). Those services are metered per query, per GB stored, per embedding generated — and they don't do sentence-level highlighting, surprise filtering, or adaptive decay. You're paying more for less.
+
+The most sophisticated component in the system — the 0.6B encoder doing sentence-level relevance scoring — runs locally on your machine's CPU. No GPU instance. No cloud inference endpoint. No per-token billing. After download, it costs exactly zero.
+
+An enterprise could deploy Titan Memory for their entire AI team and the infrastructure cost would be less than one engineer's monthly coffee budget.
 
 ---
 
