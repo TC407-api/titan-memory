@@ -546,6 +546,14 @@ The most sophisticated component in the system — the 0.6B encoder doing senten
 
 An enterprise could deploy Titan Memory for their entire AI team and the infrastructure cost would be less than one engineer's monthly coffee budget.
 
+### Sustainability
+
+Every token sent to an LLM burns GPU cycles. Titan Memory's 70-80% token compression on recall means 70-80% less GPU inference energy on every single interaction. The semantic highlight model runs on CPU — orders of magnitude more energy efficient than GPU inference. Surprise filtering prevents unnecessary storage and computation at the intake layer. Adaptive decay automatically cleans up what's no longer needed.
+
+Multiply that across an enterprise running thousands of AI interactions per day and the energy savings are measurable. Less compute, less power, less carbon — without sacrificing capability. In fact, by sending only relevant context to the LLM, response quality goes *up* while energy consumption goes *down*.
+
+For organizations with ESG commitments, carbon reporting requirements, or sustainability mandates: Titan Memory doesn't just make AI smarter and cheaper. It makes AI greener.
+
 ---
 
 ## Project Stats
