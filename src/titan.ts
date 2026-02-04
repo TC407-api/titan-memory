@@ -655,6 +655,28 @@ export class TitanMemory {
       }
     }
 
+    // CatBrain Hook 4: Run Librarian pipeline - semantic highlight, prune, reconstruct
+    const config = loadConfig();
+    let highlightedContext: string | undefined;
+    let highlightStats: UnifiedQueryResult['highlightStats'] | undefined;
+
+    if (this.catBrainPipeline && config.semanticHighlight?.highlightOnRecall !== false) {
+      try {
+        const librarianResult = await this.catBrainPipeline.processForRecall(query, fusedMemories);
+        if (librarianResult.goldSentences.length > 0) {
+          highlightedContext = librarianResult.goldSentences.map(s => s.text).join(' ');
+          highlightStats = {
+            totalSentences: librarianResult.totalSentences,
+            goldSentences: librarianResult.goldSentences.length,
+            prunedCount: librarianResult.prunedCount,
+            compressionRate: librarianResult.compressionRate,
+          };
+        }
+      } catch {
+        // Non-critical - continue without highlighting
+      }
+    }
+
     const totalQueryTimeMs = performance.now() - startTime;
 
     // FR-2: Progressive disclosure - return based on mode
@@ -682,6 +704,8 @@ export class TitanMemory {
       results,
       fusedMemories,
       totalQueryTimeMs,
+      highlightedContext,
+      highlightStats,
     };
   }
 

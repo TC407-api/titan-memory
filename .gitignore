@@ -31,3 +31,15 @@ npm-debug.log*
 
 # Package manager locks (optional - keep package-lock.json if you want)
 # package-lock.json
+
+# Zilliz highlight model (1.2GB+ - download separately)
+models/
+
+# Python highlight sidecar venv
+highlight-env/
+
+# Backup files
+*.backup
+
+# Windows null device artifact
+nul

@@ -2,8 +2,10 @@
  * Semantic Highlighting Utility
  * Highlights relevant sentences in retrieved memories based on query
  *
- * Inspired by Zilliz semantic-highlight-bilingual-v1 model
- * Provides query-based relevance scoring and noise filtering
+ * Scoring priority chain:
+ *   1. Zilliz semantic-highlight-bilingual-v1 (0.6B local model via sidecar HTTP service)
+ *   2. Voyage AI embeddings (cosine similarity)
+ *   3. Term overlap (keyword fallback)
  */
 
 import { HighlightResult, SemanticHighlightConfig } from '../types.js';
@@ -13,16 +15,23 @@ import { cosineSimilarity } from '../storage/embeddings/index.js';
 const DEFAULT_CONFIG: Required<SemanticHighlightConfig> = {
   enabled: true,
   threshold: 0.5,
-  model: 'local',  // Use local similarity-based highlighting
+  model: 'zilliz',  // Prefer Zilliz model via sidecar
   highlightOnRecall: true,
   maxSentences: 100,
 };
+
+/** Default URL for the Zilliz highlight sidecar service */
+const ZILLIZ_SERVICE_URL = process.env.TITAN_HIGHLIGHT_URL || 'http://127.0.0.1:8079';
+
+/** Cache the sidecar availability check so we don't spam failed requests */
+let _sidecarAvailable: boolean | null = null;
+let _sidecarCheckTime = 0;
+const SIDECAR_CHECK_INTERVAL_MS = 30_000; // Re-check every 30s
 
 /**
  * Split text into sentences
  */
 function splitIntoSentences(text: string): string[] {
-  // Handle common sentence boundaries
   const sentences = text
     .replace(/([.!?])\s+/g, '$1\n')
     .split('\n')
@@ -63,8 +72,86 @@ function calculateTermOverlap(query: string, sentence: string): number {
 }
 
 /**
+ * Check if the Zilliz highlight sidecar service is running
+ */
+async function checkSidecarAvailable(): Promise<boolean> {
+  const now = Date.now();
+  if (_sidecarAvailable !== null && (now - _sidecarCheckTime) < SIDECAR_CHECK_INTERVAL_MS) {
+    return _sidecarAvailable;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+
+    const response = await fetch(`${ZILLIZ_SERVICE_URL}/health`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    const data = await response.json() as { status: string; model_loaded: boolean };
+    _sidecarAvailable = data.status === 'ok' && data.model_loaded === true;
+  } catch {
+    _sidecarAvailable = false;
+  }
+
+  _sidecarCheckTime = now;
+  return _sidecarAvailable;
+}
+
+/**
+ * Call the Zilliz highlight sidecar service
+ */
+async function callZillizService(
+  question: string,
+  context: string,
+  threshold: number,
+): Promise<HighlightResult | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(`${ZILLIZ_SERVICE_URL}/highlight`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        context,
+        threshold,
+        return_sentence_metrics: true,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) return null;
+
+    const data = await response.json() as {
+      highlighted_sentences: string[];
+      compression_rate: number;
+      sentence_probabilities: number[];
+    };
+
+    // Count original sentences for stats
+    const originalSentences = splitIntoSentences(context);
+
+    return {
+      highlightedSentences: data.highlighted_sentences,
+      compressionRate: data.compression_rate,
+      sentenceProbabilities: data.sentence_probabilities,
+      originalSentenceCount: originalSentences.length,
+      highlightedSentenceCount: data.highlighted_sentences.length,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Semantic Highlighter
  * Scores and highlights relevant sentences based on query
+ *
+ * Scoring chain: Zilliz sidecar → Voyage embeddings → term overlap
  */
 export class SemanticHighlighter {
   private config: Required<SemanticHighlightConfig>;
@@ -84,9 +171,38 @@ export class SemanticHighlighter {
 
   /**
    * Highlight relevant sentences in content based on query
+   * Tries Zilliz model first, falls back to embeddings, then term overlap
    */
   async highlight(query: string, content: string, threshold?: number): Promise<HighlightResult> {
     const effectiveThreshold = threshold ?? this.config.threshold;
+
+    if (!content || content.trim().length === 0) {
+      return {
+        highlightedSentences: [],
+        compressionRate: 1,
+        sentenceProbabilities: [],
+        originalSentenceCount: 0,
+        highlightedSentenceCount: 0,
+      };
+    }
+
+    // Priority 1: Try Zilliz sidecar service (the real deal - 0.6B encoder model)
+    if (this.config.model === 'zilliz' || this.config.model === 'auto') {
+      const sidecarUp = await checkSidecarAvailable();
+      if (sidecarUp) {
+        const result = await callZillizService(query, content, effectiveThreshold);
+        if (result) return result;
+      }
+    }
+
+    // Priority 2 & 3: Local scoring (embeddings or term overlap)
+    return this.highlightLocal(query, content, effectiveThreshold);
+  }
+
+  /**
+   * Local highlighting using embeddings or term overlap
+   */
+  private async highlightLocal(query: string, content: string, threshold: number): Promise<HighlightResult> {
     const sentences = splitIntoSentences(content);
 
     if (sentences.length === 0) {
@@ -99,7 +215,6 @@ export class SemanticHighlighter {
       };
     }
 
-    // Limit sentences if configured
     const limitedSentences = this.config.maxSentences
       ? sentences.slice(0, this.config.maxSentences)
       : sentences;
@@ -112,7 +227,7 @@ export class SemanticHighlighter {
     const highlightedProbs: number[] = [];
 
     for (let i = 0; i < limitedSentences.length; i++) {
-      if (probabilities[i] >= effectiveThreshold) {
+      if (probabilities[i] >= threshold) {
         highlighted.push(limitedSentences[i]);
         highlightedProbs.push(probabilities[i]);
       }
@@ -224,6 +339,13 @@ export class SemanticHighlighter {
   isEnabled(): boolean {
     return this.config.enabled;
   }
+
+  /**
+   * Check if the Zilliz sidecar service is available
+   */
+  async isZillizAvailable(): Promise<boolean> {
+    return checkSidecarAvailable();
+  }
 }
 
 /**
@@ -247,4 +369,12 @@ export async function quickHighlight(
 ): Promise<HighlightResult> {
   const highlighter = new SemanticHighlighter({ threshold }, embeddingGenerator);
   return highlighter.highlight(query, content);
+}
+
+/**
+ * Reset the sidecar availability cache (for testing)
+ */
+export function resetSidecarCache(): void {
+  _sidecarAvailable = null;
+  _sidecarCheckTime = 0;
 }

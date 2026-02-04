@@ -125,6 +125,15 @@ export interface UnifiedQueryResult {
   results: QueryResult[];
   fusedMemories: MemoryEntry[];
   totalQueryTimeMs: number;
+  /** Reconstructed gold sentences from the Librarian pipeline (semantic highlighting) */
+  highlightedContext?: string;
+  /** Stats from the semantic highlight / pruning pass */
+  highlightStats?: {
+    totalSentences: number;
+    goldSentences: number;
+    prunedCount: number;
+    compressionRate: number;
+  };
 }
 
 // Memory Stats

@@ -39,6 +39,12 @@
     "accessWeight": 1.0
   },
 
+  "semanticHighlight": {
+    "enabled": true,
+    "threshold": 0.5,
+    "highlightOnRecall": true
+  },
+
   "hybridSearch": {
     "enabled": true,
     "rerankStrategy": "rrf",
