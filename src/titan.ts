@@ -72,6 +72,31 @@ import { ProactiveSuggestionsManager, createProactiveSuggestionsManager } from '
 import { CrossProjectLearningManager, createCrossProjectLearningManager } from './learning/cross-project.js';
 import { PatternMatcher, createPatternMatcher } from './learning/pattern-matcher.js';
 
+// v2.0 imports
+import { NoopLogger, NoopReason, NoopDecision, NoopStats, getNoopLogger } from './trace/noop-log.js';
+import {
+  IntentDetector,
+  QueryIntent,
+  QueryIntentType,
+  getSearchConfig,
+  getIntentDetector
+} from './retrieval/intent.js';
+import {
+  CausalGraph,
+  CausalEdge,
+  CausalChain,
+  ExplanationTree,
+  CausalRelationType,
+  CausalGraphStats,
+  getCausalGraph
+} from './graphs/causal.js';
+import {
+  WorkingMemory,
+  FocusItem,
+  WorkingMemoryState,
+  getWorkingMemory
+} from './layers/working.js';
+
 /**
  * Gating decisions for intelligent routing
  */
@@ -118,6 +143,18 @@ export class TitanMemory {
   private crossProjectLearner?: CrossProjectLearningManager;
   private patternMatcher?: PatternMatcher;
 
+  // v2.0: NOOP Logger
+  private noopLogger: NoopLogger;
+
+  // v2.0: Intent Detector
+  private intentDetector: IntentDetector;
+
+  // v2.0: Causal Graph
+  private causalGraph: CausalGraph;
+
+  // v2.0: Working Memory
+  private workingMemory: WorkingMemory;
+
   constructor(configPath?: string, projectId?: string) {
     loadConfig(configPath);
     ensureDirectories();
@@ -148,6 +185,18 @@ export class TitanMemory {
     this.validator = new BehavioralValidator();
     this.adaptiveMemory = new AdaptiveMemory();
     this.continualLearner = new ContinualLearner();
+
+    // v2.0: Initialize NOOP logger
+    this.noopLogger = getNoopLogger();
+
+    // v2.0: Initialize Intent Detector
+    this.intentDetector = getIntentDetector();
+
+    // v2.0: Initialize Causal Graph
+    this.causalGraph = getCausalGraph();
+
+    // v2.0: Initialize Working Memory
+    this.workingMemory = getWorkingMemory();
 
     // MIRAS Enhancements: Initialize based on config
     this.initializeMirasEnhancements();
@@ -331,6 +380,10 @@ export class TitanMemory {
       this.validator.initialize(),
       this.adaptiveMemory.initialize(),
       this.continualLearner.initialize(),
+      // v2.0: Causal Graph
+      this.causalGraph.initialize(),
+      // v2.0: Working Memory
+      this.workingMemory.initialize(),
     ];
 
     // MIRAS: Add cross-project learner initialization
@@ -345,55 +398,21 @@ export class TitanMemory {
 
   /**
    * Intelligent routing - decide which layers to use
+   * v2.0: Now uses intent detection for optimized routing
    */
   private gateQuery(content: string): GatingDecision {
-    const lower = content.toLowerCase();
-    const layers: MemoryLayer[] = [];
-    let priority = MemoryLayer.LONG_TERM;
-    let reason = 'Default semantic search';
+    // v2.0: Use intent detector for intelligent routing
+    const intent = this.intentDetector.detect(content);
+    const searchConfig = getSearchConfig(intent);
 
-    // Check for factual lookup patterns (definitions, constants, etc.)
-    if (/\b(?:what is|define|definition of|meaning of)\b/.test(lower)) {
-      layers.push(MemoryLayer.FACTUAL);
-      priority = MemoryLayer.FACTUAL;
-      reason = 'Factual lookup query';
-    }
-
-    // Check for reasoning/pattern queries
-    if (/\b(?:how to|why|because|pattern|approach|strategy)\b/.test(lower)) {
-      layers.push(MemoryLayer.SEMANTIC);
-      priority = MemoryLayer.SEMANTIC;
-      reason = 'Reasoning/pattern query';
-    }
-
-    // Check for temporal queries
-    if (/\b(?:yesterday|today|last week|when did|history of)\b/.test(lower)) {
-      layers.push(MemoryLayer.EPISODIC);
-      priority = MemoryLayer.EPISODIC;
-      reason = 'Temporal/episodic query';
-    }
-
-    // Check for personal/preference queries
-    if (/\b(?:i prefer|my|user wants|style|preference)\b/.test(lower)) {
-      layers.push(MemoryLayer.EPISODIC);
-      layers.push(MemoryLayer.SEMANTIC);
-      priority = MemoryLayer.EPISODIC;
-      reason = 'Preference query';
-    }
-
-    // Always include long-term for semantic search fallback
-    if (!layers.includes(MemoryLayer.LONG_TERM)) {
-      layers.push(MemoryLayer.LONG_TERM);
-    }
-
-    // Default to all layers if nothing specific matched
-    if (layers.length === 1) {
-      layers.push(MemoryLayer.FACTUAL, MemoryLayer.SEMANTIC, MemoryLayer.EPISODIC);
-      reason = 'Broad search across all layers';
-    }
-
-    return { layers, priority, reason };
+    // Convert intent to gating decision
+    return {
+      layers: searchConfig.layers,
+      priority: intent.priorityLayer,
+      reason: intent.explanation,
+    };
   }
+
 
   /**
    * Intelligent routing - decide which layer to store in
@@ -421,12 +440,17 @@ export class TitanMemory {
       };
     }
 
-    // Episode/event markers
-    if (/\b(?:happened|occurred|did|completed|started|finished)\b/.test(lower)) {
+    // Episode/event markers - require temporal or specific event context
+    // More strict: must have date/time context OR be a significant event verb
+    const hasTemporalContext = /\b(?:yesterday|today|last week|on \w+day|in \w+ \d{4}|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2})\b/.test(lower);
+    const isSignificantEvent = /\b(?:deployed|released|launched|shipped|merged|committed|incident|outage|milestone|achieved|discovered|resolved|fixed bug|production)\b/.test(lower);
+    const hasEventVerb = /\b(?:happened|occurred)\b/.test(lower); // Only strong event verbs, not "did/started/finished"
+
+    if (hasTemporalContext || isSignificantEvent || hasEventVerb) {
       return {
         layers: [MemoryLayer.EPISODIC],
         priority: MemoryLayer.EPISODIC,
-        reason: 'Event/episode',
+        reason: 'Event/episode with temporal or significance markers',
       };
     }
 
@@ -511,6 +535,9 @@ export class TitanMemory {
         }
       }
     }
+
+    // v2.0: Record memory write for NOOP ratio tracking
+    this.noopLogger.recordMemoryWrite().catch(() => {});
 
     // Phase 3: Post-storage processing (async, non-blocking)
     this.processPostStore(result, content).catch(error => {
@@ -1092,6 +1119,17 @@ export class TitanMemory {
     // MIRAS: Close cross-project learner (the only MIRAS system that needs explicit closing)
     if (this.crossProjectLearner) {
       closePromises.push(this.crossProjectLearner.close());
+    }
+
+    // v2.0: Close causal graph, noop logger, and working memory
+    if (this.causalGraph) {
+      closePromises.push(this.causalGraph.close());
+    }
+    if (this.noopLogger) {
+      closePromises.push(this.noopLogger.close());
+    }
+    if (this.workingMemory) {
+      closePromises.push(this.workingMemory.close());
     }
 
     await Promise.all(closePromises);
@@ -1837,6 +1875,260 @@ export class TitanMemory {
     }
 
     return this.decayCalculator.calculate(memory);
+  }
+
+  // ==================== v2.0 NOOP/Skip Operation ====================
+
+  /**
+   * Log a NOOP decision - agent explicitly skips memory storage
+   * v2.0: Mem0 AUDN pattern - Add/Update/Delete/Noop
+   */
+  async logNoop(params: {
+    reason: NoopReason;
+    context?: string;
+    contentPreview?: string;
+    sessionId?: string;
+    projectId?: string;
+  }): Promise<NoopDecision> {
+    if (!this.initialized) await this.initialize();
+
+    return this.noopLogger.logNoop({
+      reason: params.reason,
+      context: params.context,
+      contentPreview: params.contentPreview,
+      sessionId: params.sessionId,
+      projectId: params.projectId || this.activeProjectId,
+    });
+  }
+
+  /**
+   * Get NOOP statistics
+   * v2.0: Shows skip decision analytics
+   */
+  async getNoopStats(): Promise<NoopStats> {
+    if (!this.initialized) await this.initialize();
+    return this.noopLogger.getStats();
+  }
+
+  /**
+   * Get recent NOOP decisions
+   * v2.0: For debugging and analytics
+   */
+  async getRecentNoops(limit: number = 10): Promise<NoopDecision[]> {
+    if (!this.initialized) await this.initialize();
+    return this.noopLogger.getRecent(limit);
+  }
+
+  // ==================== v2.0 Intent-Aware Retrieval ====================
+
+  /**
+   * Detect query intent for optimized retrieval
+   * v2.0: Returns intent type, confidence, and recommended layers/strategy
+   */
+  detectQueryIntent(query: string): QueryIntent {
+    return this.intentDetector.detect(query);
+  }
+
+  /**
+   * Get intent detection statistics
+   * v2.0: Shows distribution of query intents over time
+   */
+  getIntentStats(): {
+    totalQueries: number;
+    distribution: Record<QueryIntentType, number>;
+    avgConfidence: number;
+  } {
+    return this.intentDetector.getStats();
+  }
+
+  /**
+   * Get queries that matched a specific intent type
+   * v2.0: For analytics and debugging
+   */
+  getQueriesByIntent(type: QueryIntentType, limit: number = 10): string[] {
+    return this.intentDetector.getQueriesByIntent(type, limit);
+  }
+
+  // ==================== v2.0 Causal Graph ====================
+
+  /**
+   * Create a causal relationship between two memories
+   * v2.0: MAGMA-inspired multi-graph architecture
+   */
+  async createCausalLink(params: {
+    fromMemoryId: string;
+    toMemoryId: string;
+    relationship: CausalRelationType;
+    strength?: number;
+    evidence?: string;
+  }): Promise<CausalEdge> {
+    if (!this.initialized) await this.initialize();
+    return this.causalGraph.link(params);
+  }
+
+  /**
+   * Trace causal chain from a memory
+   * v2.0: Follows cause/effect relationships
+   */
+  async traceCausalChain(memoryId: string, options?: {
+    depth?: number;
+    direction?: 'forward' | 'backward' | 'both';
+    minStrength?: number;
+    relationTypes?: CausalRelationType[];
+  }): Promise<CausalChain> {
+    if (!this.initialized) await this.initialize();
+    return this.causalGraph.trace(memoryId, options);
+  }
+
+  /**
+   * Explain why a memory exists (root cause analysis)
+   * v2.0: Traces causes back to root
+   */
+  async explainMemory(memoryId: string, maxDepth?: number): Promise<ExplanationTree> {
+    if (!this.initialized) await this.initialize();
+    return this.causalGraph.why(memoryId, maxDepth);
+  }
+
+  /**
+   * Get all causal edges for a memory
+   * v2.0: Returns incoming and outgoing relationships
+   */
+  async getCausalEdges(memoryId: string): Promise<{
+    outgoing: CausalEdge[];
+    incoming: CausalEdge[];
+  }> {
+    if (!this.initialized) await this.initialize();
+    return this.causalGraph.getEdgesForMemory(memoryId);
+  }
+
+  /**
+   * Find contradictions involving a memory
+   * v2.0: Useful for conflict detection
+   */
+  async findContradictions(memoryId: string): Promise<CausalEdge[]> {
+    if (!this.initialized) await this.initialize();
+    return this.causalGraph.findContradictions(memoryId);
+  }
+
+  /**
+   * Get causal graph statistics
+   * v2.0: Shows relationship distribution and graph health
+   */
+  async getCausalGraphStats(): Promise<CausalGraphStats> {
+    if (!this.initialized) await this.initialize();
+    return this.causalGraph.getStats();
+  }
+
+  /**
+   * Remove a causal link
+   * v2.0: Unlinks two memories
+   */
+  async removeCausalLink(edgeId: string): Promise<boolean> {
+    if (!this.initialized) await this.initialize();
+    return this.causalGraph.unlink(edgeId);
+  }
+
+  // ==================== v2.0 Working Memory Methods ====================
+
+  /**
+   * Add an item to working memory focus
+   * v2.0: Explicit working memory management
+   */
+  async addFocus(content: string, options?: {
+    priority?: 'high' | 'normal' | 'low';
+    ttlMs?: number;
+    source?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<FocusItem> {
+    if (!this.initialized) await this.initialize();
+    return this.workingMemory.addFocus({
+      content,
+      priority: options?.priority,
+      ttlMs: options?.ttlMs,
+      source: options?.source,
+      metadata: options?.metadata,
+    });
+  }
+
+  /**
+   * Get current working memory focus items
+   * v2.0: Returns items sorted by priority and recency
+   */
+  async getFocus(): Promise<FocusItem[]> {
+    if (!this.initialized) await this.initialize();
+    return this.workingMemory.getFocus();
+  }
+
+  /**
+   * Get working memory focus as formatted context string
+   * v2.0: Useful for injecting into prompts
+   */
+  async getFocusContext(): Promise<string> {
+    if (!this.initialized) await this.initialize();
+    return this.workingMemory.getFocusContext();
+  }
+
+  /**
+   * Remove a specific focus item
+   * v2.0: Explicit attention control
+   */
+  async removeFocus(id: string): Promise<boolean> {
+    if (!this.initialized) await this.initialize();
+    return this.workingMemory.removeFocus(id);
+  }
+
+  /**
+   * Clear all focus items
+   * v2.0: Reset working memory
+   */
+  async clearFocus(): Promise<number> {
+    if (!this.initialized) await this.initialize();
+    return this.workingMemory.clearFocus();
+  }
+
+  /**
+   * Get scratchpad content
+   * v2.0: Agent notes/thinking
+   */
+  async getScratchpad(): Promise<string> {
+    if (!this.initialized) await this.initialize();
+    return this.workingMemory.getScratchpad();
+  }
+
+  /**
+   * Set scratchpad content
+   * v2.0: Replace scratchpad
+   */
+  async setScratchpad(content: string): Promise<void> {
+    if (!this.initialized) await this.initialize();
+    return this.workingMemory.setScratchpad(content);
+  }
+
+  /**
+   * Append to scratchpad
+   * v2.0: Add to existing scratchpad
+   */
+  async appendScratchpad(content: string): Promise<void> {
+    if (!this.initialized) await this.initialize();
+    return this.workingMemory.appendScratchpad(content);
+  }
+
+  /**
+   * Clear scratchpad
+   * v2.0: Reset scratchpad
+   */
+  async clearScratchpad(): Promise<void> {
+    if (!this.initialized) await this.initialize();
+    return this.workingMemory.clearScratchpad();
+  }
+
+  /**
+   * Get full working memory state
+   * v2.0: Returns focus items, scratchpad, and metadata
+   */
+  async getWorkingMemoryState(): Promise<WorkingMemoryState> {
+    if (!this.initialized) await this.initialize();
+    return this.workingMemory.getState();
   }
 }
 

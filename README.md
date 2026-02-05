@@ -22,12 +22,29 @@
 </p>
 
 <p align="center">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-914%20passing-brightgreen">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.0.0-blue">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-1008%20passing-brightgreen">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.4-blue">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-compatible-purple">
   <img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-orange">
   <img alt="Node" src="https://img.shields.io/badge/node-%3E%3D18-green">
 </p>
+
+---
+
+## What's New in v2.0
+
+Titan Memory v2.0 closes competitive gaps with industry leaders while maintaining its architectural advantages:
+
+| Feature | Description |
+|---------|-------------|
+| **NOOP/Skip Operation** | Explicitly decide NOT to store — prevents memory bloat from routine interactions (Mem0 AUDN parity) |
+| **Intent-Aware Retrieval** | Detect query intent (factual/pattern/timeline/exploration) before retrieval for optimized strategy |
+| **Working Memory** | Explicit L1 management with focus items, priority-based eviction, and agent scratchpad (MemGPT parity) |
+| **Causal Graph** | Track cause/effect relationships between memories — enables "why did X happen?" queries (MAGMA parity) |
+| **Benchmark Suite** | Internal benchmarks for latency (p95 targets) and retrieval accuracy (Recall@K, MRR) |
+
+**28 MCP tools** (up from 14) — See [MCP Tools](#mcp-tools) for the complete list.
 
 ---
 
@@ -401,7 +418,7 @@ Create or edit `config.json` in the titan-memory directory:
 
 ## MCP Tools
 
-Titan Memory exposes 14 tools through the Model Context Protocol:
+Titan Memory v2.0 exposes **28 tools** through the Model Context Protocol:
 
 ### Core Memory
 
@@ -426,6 +443,45 @@ Titan Memory exposes 14 tools through the Model Context Protocol:
 | `titan_patterns` | Cross-project pattern discovery |
 | `titan_miras_stats` | MIRAS enhancement system statistics |
 | `titan_classify` | Cortex category classification |
+| `titan_category_summary` | Rolling summary for a memory category |
+| `titan_sufficiency` | Check category coverage of recall results |
+
+### NOOP / Skip Operations (v2.0)
+
+| Tool | Description |
+|------|-------------|
+| `titan_noop` | Explicitly skip memory storage — prevents bloat from routine interactions |
+| `titan_noop_stats` | Analytics on skip decisions |
+
+### Intent-Aware Retrieval (v2.0)
+
+| Tool | Description |
+|------|-------------|
+| `titan_intent` | Detect query intent for optimized retrieval strategy |
+
+### Causal Graph (v2.0)
+
+| Tool | Description |
+|------|-------------|
+| `titan_link` | Create causal relationships between memories |
+| `titan_trace` | Trace causal chains from a memory |
+| `titan_why` | Explain with causal graph — "why did X happen?" |
+
+### Working Memory (v2.0)
+
+| Tool | Description |
+|------|-------------|
+| `titan_focus_add` | Pin content to working memory focus |
+| `titan_focus_list` | List current focus items |
+| `titan_focus_clear` | Clear all focus items |
+| `titan_focus_remove` | Remove specific focus item |
+| `titan_scratchpad` | Get/set agent scratchpad for thinking |
+
+### Benchmarking (v2.0)
+
+| Tool | Description |
+|------|-------------|
+| `titan_benchmark` | Run latency and accuracy benchmarks |
 
 ### Example Usage
 

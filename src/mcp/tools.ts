@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { TitanMemory, initTitan } from '../titan.js';
 import { MemoryLayer, CompactionContext, RecallMode } from '../types.js';
 import { UtilitySignal } from '../utils/utility.js';
+import { NoopReason } from '../trace/noop-log.js';
 
 // Tool input schemas using Zod for validation
 export const ToolSchemas = {
@@ -101,6 +102,81 @@ export const ToolSchemas = {
   titan_sufficiency: z.object({
     query: z.string().describe('Query to check category coverage for'),
     memoryIds: z.array(z.string()).optional().describe('Specific memory IDs to check (uses recent recall if not provided)'),
+  }),
+
+  // v2.0: NOOP/Skip Operation (Mem0 AUDN pattern)
+  titan_noop: z.object({
+    reason: z.enum(['routine', 'duplicate', 'low_value', 'temporary', 'off_topic', 'noise'])
+      .describe('Why the memory update is being skipped'),
+    context: z.string().optional()
+      .describe('Optional context about the skip decision'),
+    contentPreview: z.string().optional()
+      .describe('Preview of content that was skipped (for debugging)'),
+    sessionId: z.string().optional()
+      .describe('Current session ID'),
+    projectId: z.string().optional()
+      .describe('Current project ID'),
+  }),
+
+  // v2.0: Get NOOP statistics
+  titan_noop_stats: z.object({}),
+
+  // v2.0: Intent-Aware Retrieval
+  titan_intent: z.object({
+    query: z.string().describe('Query to analyze for intent'),
+  }),
+
+  // v2.0: Causal Graph - Link memories
+  titan_link: z.object({
+    fromMemoryId: z.string().describe('Source memory ID (cause)'),
+    toMemoryId: z.string().describe('Target memory ID (effect)'),
+    relationship: z.enum(['causes', 'enables', 'blocks', 'follows', 'contradicts', 'requires', 'supports', 'refutes'])
+      .describe('Type of causal relationship'),
+    strength: z.number().min(0).max(1).optional().describe('Confidence in relationship (0-1, default 0.5)'),
+    evidence: z.string().optional().describe('Why this relationship exists'),
+  }),
+
+  // v2.0: Causal Graph - Trace causal chain
+  titan_trace: z.object({
+    memoryId: z.string().describe('Memory ID to trace from'),
+    depth: z.number().optional().describe('Max traversal depth (default 5)'),
+    direction: z.enum(['forward', 'backward', 'both']).optional().describe('Trace direction (default backward)'),
+  }),
+
+  // v2.0: Causal Graph - Explain why (root cause analysis)
+  titan_why: z.object({
+    memoryId: z.string().describe('Memory ID to explain'),
+    maxDepth: z.number().optional().describe('Max depth for cause tracing (default 5)'),
+  }),
+
+  // v2.0 Working Memory schemas
+  titan_focus_add: z.object({
+    content: z.string().describe('Content to add to working memory focus'),
+    priority: z.enum(['high', 'normal', 'low']).default('normal').optional(),
+    ttlMs: z.number().optional().describe('Time-to-live in milliseconds'),
+    source: z.string().optional().describe('Source of this focus item'),
+  }),
+
+  titan_focus_list: z.object({
+    asContext: z.boolean().default(false).optional().describe('Return as formatted context string'),
+  }),
+
+  titan_focus_clear: z.object({}),
+
+  titan_focus_remove: z.object({
+    id: z.string().describe('ID of the focus item to remove'),
+  }),
+
+  titan_scratchpad: z.object({
+    action: z.enum(['get', 'set', 'append', 'clear']).describe('Action to perform'),
+    content: z.string().optional().describe('Content for set/append actions'),
+  }),
+
+  // v2.0 Benchmark schema
+  titan_benchmark: z.object({
+    categories: z.array(z.enum(['retrieval', 'latency', 'token-efficiency', 'accuracy'])).optional()
+      .describe('Categories to run (default: all)'),
+    verbose: z.boolean().default(false).optional().describe('Show detailed output'),
   }),
 };
 
@@ -307,6 +383,167 @@ export const ToolDefinitions = [
         memoryIds: { type: 'array', items: { type: 'string' }, description: 'Specific memory IDs to check' },
       },
       required: ['query'],
+    },
+  },
+  // v2.0: NOOP/Skip Operation
+  {
+    name: 'titan_noop',
+    description: 'v2.0: Explicitly skip a memory update. Use this when content should NOT be stored (routine interactions, duplicates, low value). Prevents memory bloat.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        reason: {
+          type: 'string',
+          enum: ['routine', 'duplicate', 'low_value', 'temporary', 'off_topic', 'noise'],
+          description: 'Why skipping: routine (normal interaction), duplicate (already exists), low_value (not informative), temporary (ephemeral), off_topic (irrelevant), noise (filtered)',
+        },
+        context: { type: 'string', description: 'Optional context about the skip decision' },
+        contentPreview: { type: 'string', description: 'Preview of skipped content (for debugging)' },
+        sessionId: { type: 'string', description: 'Current session ID' },
+        projectId: { type: 'string', description: 'Current project ID' },
+      },
+      required: ['reason'],
+    },
+  },
+  {
+    name: 'titan_noop_stats',
+    description: 'v2.0: Get statistics about NOOP/skip decisions. Shows skip reasons breakdown and memory write ratio.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  // v2.0: Intent-Aware Retrieval
+  {
+    name: 'titan_intent',
+    description: 'v2.0: Detect query intent to optimize retrieval. Returns intent type, confidence, and recommended layers/strategy.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Query to analyze for intent' },
+      },
+      required: ['query'],
+    },
+  },
+  // v2.0: Causal Graph
+  {
+    name: 'titan_link',
+    description: 'v2.0: Create a causal relationship between two memories. Enables reasoning about causes, effects, dependencies, and contradictions.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        fromMemoryId: { type: 'string', description: 'Source memory ID (cause)' },
+        toMemoryId: { type: 'string', description: 'Target memory ID (effect)' },
+        relationship: {
+          type: 'string',
+          enum: ['causes', 'enables', 'blocks', 'follows', 'contradicts', 'requires', 'supports', 'refutes'],
+          description: 'Type of relationship: causes (direct), enables (allows), blocks (prevents), follows (temporal), contradicts (conflicts), requires (depends on), supports (evidence for), refutes (evidence against)',
+        },
+        strength: { type: 'number', description: 'Confidence 0-1 (default 0.5)' },
+        evidence: { type: 'string', description: 'Why this relationship exists' },
+      },
+      required: ['fromMemoryId', 'toMemoryId', 'relationship'],
+    },
+  },
+  {
+    name: 'titan_trace',
+    description: 'v2.0: Trace causal chain from a memory. Returns the chain of relationships and their combined strength.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        memoryId: { type: 'string', description: 'Memory ID to trace from' },
+        depth: { type: 'number', description: 'Max depth (default 5)' },
+        direction: { type: 'string', enum: ['forward', 'backward', 'both'], description: 'Trace direction' },
+      },
+      required: ['memoryId'],
+    },
+  },
+  {
+    name: 'titan_why',
+    description: 'v2.0: Explain why a memory exists by tracing its causes. Returns direct causes, indirect causes, and root causes.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        memoryId: { type: 'string', description: 'Memory ID to explain' },
+        maxDepth: { type: 'number', description: 'Max cause tracing depth (default 5)' },
+      },
+      required: ['memoryId'],
+    },
+  },
+  // v2.0 Working Memory tools
+  {
+    name: 'titan_focus_add',
+    description: 'v2.0: Add an item to working memory focus. Working memory tracks what\'s currently "in scope" for the agent. Max 5 items by default.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        content: { type: 'string', description: 'Content to add to focus' },
+        priority: { type: 'string', enum: ['high', 'normal', 'low'], description: 'Priority level (default: normal)' },
+        ttlMs: { type: 'number', description: 'Time-to-live in milliseconds (optional, 0 = no expiry)' },
+        source: { type: 'string', description: 'Source of this focus item (e.g., "user", "recall", "agent")' },
+      },
+      required: ['content'],
+    },
+  },
+  {
+    name: 'titan_focus_list',
+    description: 'v2.0: List current working memory focus items. Returns items sorted by priority and recency.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        asContext: { type: 'boolean', description: 'Return as formatted context string (default: false)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'titan_focus_clear',
+    description: 'v2.0: Clear all items from working memory focus.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'titan_focus_remove',
+    description: 'v2.0: Remove a specific item from working memory focus by ID.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        id: { type: 'string', description: 'ID of the focus item to remove' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'titan_scratchpad',
+    description: 'v2.0: Get or set the agent scratchpad. Scratchpad is for agent notes/thinking during a session.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        action: { type: 'string', enum: ['get', 'set', 'append', 'clear'], description: 'Action to perform' },
+        content: { type: 'string', description: 'Content for set/append actions' },
+      },
+      required: ['action'],
+    },
+  },
+  // v2.0 Benchmark tool
+  {
+    name: 'titan_benchmark',
+    description: 'v2.0: Run the Titan Memory benchmark suite. Tests latency, retrieval accuracy, and overall system health.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        categories: {
+          type: 'array',
+          items: { type: 'string', enum: ['retrieval', 'latency', 'token-efficiency', 'accuracy'] },
+          description: 'Categories to run (default: all)',
+        },
+        verbose: { type: 'boolean', description: 'Show detailed output (default: false)' },
+      },
+      required: [],
     },
   },
 ];
@@ -517,6 +754,124 @@ export class ToolHandler {
             }
           }
           result = titan.checkCategorySufficiency(memories, parsed.query);
+          break;
+        }
+
+        // v2.0: NOOP/Skip Operation
+        case 'titan_noop': {
+          const parsed = ToolSchemas.titan_noop.parse(args);
+          result = await titan.logNoop({
+            reason: parsed.reason as NoopReason,
+            context: parsed.context,
+            contentPreview: parsed.contentPreview,
+            sessionId: parsed.sessionId,
+            projectId: parsed.projectId,
+          });
+          break;
+        }
+
+        case 'titan_noop_stats': {
+          result = await titan.getNoopStats();
+          break;
+        }
+
+        // v2.0: Intent-Aware Retrieval
+        case 'titan_intent': {
+          const parsed = ToolSchemas.titan_intent.parse(args);
+          result = titan.detectQueryIntent(parsed.query);
+          break;
+        }
+
+        // v2.0: Causal Graph
+        case 'titan_link': {
+          const parsed = ToolSchemas.titan_link.parse(args);
+          result = await titan.createCausalLink({
+            fromMemoryId: parsed.fromMemoryId,
+            toMemoryId: parsed.toMemoryId,
+            relationship: parsed.relationship as import('../graphs/causal.js').CausalRelationType,
+            strength: parsed.strength,
+            evidence: parsed.evidence,
+          });
+          break;
+        }
+
+        case 'titan_trace': {
+          const parsed = ToolSchemas.titan_trace.parse(args);
+          result = await titan.traceCausalChain(parsed.memoryId, {
+            depth: parsed.depth,
+            direction: parsed.direction as 'forward' | 'backward' | 'both' | undefined,
+          });
+          break;
+        }
+
+        case 'titan_why': {
+          const parsed = ToolSchemas.titan_why.parse(args);
+          result = await titan.explainMemory(parsed.memoryId, parsed.maxDepth);
+          break;
+        }
+
+        // v2.0 Working Memory handlers
+        case 'titan_focus_add': {
+          const parsed = ToolSchemas.titan_focus_add.parse(args);
+          result = await titan.addFocus(parsed.content, {
+            priority: parsed.priority,
+            ttlMs: parsed.ttlMs,
+            source: parsed.source,
+          });
+          break;
+        }
+
+        case 'titan_focus_list': {
+          const parsed = ToolSchemas.titan_focus_list.parse(args);
+          if (parsed.asContext) {
+            result = await titan.getFocusContext();
+          } else {
+            result = await titan.getFocus();
+          }
+          break;
+        }
+
+        case 'titan_focus_clear': {
+          result = await titan.clearFocus();
+          break;
+        }
+
+        case 'titan_focus_remove': {
+          const parsed = ToolSchemas.titan_focus_remove.parse(args);
+          result = await titan.removeFocus(parsed.id);
+          break;
+        }
+
+        case 'titan_scratchpad': {
+          const parsed = ToolSchemas.titan_scratchpad.parse(args);
+          switch (parsed.action) {
+            case 'get':
+              result = await titan.getScratchpad();
+              break;
+            case 'set':
+              await titan.setScratchpad(parsed.content || '');
+              result = { success: true };
+              break;
+            case 'append':
+              await titan.appendScratchpad(parsed.content || '');
+              result = { success: true };
+              break;
+            case 'clear':
+              await titan.clearScratchpad();
+              result = { success: true };
+              break;
+          }
+          break;
+        }
+
+        case 'titan_benchmark': {
+          const parsed = ToolSchemas.titan_benchmark.parse(args);
+          // Dynamic import to avoid circular dependencies
+          const { runBenchmarkSuite } = await import('../benchmarks/index.js');
+          result = await runBenchmarkSuite({
+            categories: parsed.categories as ('retrieval' | 'latency' | 'token-efficiency' | 'accuracy')[] | undefined,
+            verbose: parsed.verbose,
+          });
           break;
         }
 

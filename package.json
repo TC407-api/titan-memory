@@ -1,7 +1,7 @@
 {
   "name": "titan-memory",
-  "version": "1.0.0",
-  "description": "Universal Cognitive Memory Layer - 5-layer AI memory system combining Engram, Titans, Hope, and Clawdbot patterns",
+  "version": "2.0.0",
+  "description": "Universal Cognitive Memory Layer - 5-layer AI memory system with intent-aware retrieval, causal graphs, and working memory",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

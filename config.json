@@ -1,5 +1,5 @@
 {
-  "surpriseThreshold": 0.3,
+  "surpriseThreshold": 0.25,
   "decayHalfLife": 180,
   "maxMemoriesPerLayer": 10000,
   "enablePreCompactionFlush": true,
@@ -29,7 +29,7 @@
 
   "semanticSurprise": {
     "algorithm": "semantic",
-    "similarityThreshold": 0.7,
+    "similarityThreshold": 0.65,
     "comparisionLimit": 50
   },
 
@@ -59,15 +59,15 @@
   "proactiveSuggestions": {
     "enabled": true,
     "maxSuggestions": 5,
-    "minUtility": 0.6,
-    "minRelevance": 0.5,
+    "minUtility": 0.5,
+    "minRelevance": 0.4,
     "includeHighlighting": true
   },
 
   "crossProject": {
     "enabled": true,
-    "minApplicability": 0.7,
-    "minRelevance": 0.6,
+    "minApplicability": 0.4,
+    "minRelevance": 0.5,
     "maxPatternsPerQuery": 10,
     "decayHalfLifeDays": 180
   }

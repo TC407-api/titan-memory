@@ -5,8 +5,8 @@
 import { ToolHandler, ToolDefinitions } from '../src/mcp/tools';
 
 describe('MCP Tool Definitions', () => {
-  it('should have 16 tools defined', () => {
-    expect(ToolDefinitions).toHaveLength(16);
+  it('should have 28 tools defined', () => {
+    expect(ToolDefinitions).toHaveLength(28);
   });
 
   it('should have correct tool names', () => {
@@ -29,6 +29,22 @@ describe('MCP Tool Definitions', () => {
     expect(toolNames).toContain('titan_classify');
     expect(toolNames).toContain('titan_category_summary');
     expect(toolNames).toContain('titan_sufficiency');
+    // v2.0 tools - NOOP and Intent
+    expect(toolNames).toContain('titan_noop');
+    expect(toolNames).toContain('titan_noop_stats');
+    expect(toolNames).toContain('titan_intent');
+    // v2.0 tools - Causal Graph
+    expect(toolNames).toContain('titan_link');
+    expect(toolNames).toContain('titan_trace');
+    expect(toolNames).toContain('titan_why');
+    // v2.0 tools - Working Memory
+    expect(toolNames).toContain('titan_focus_add');
+    expect(toolNames).toContain('titan_focus_list');
+    expect(toolNames).toContain('titan_focus_clear');
+    expect(toolNames).toContain('titan_focus_remove');
+    expect(toolNames).toContain('titan_scratchpad');
+    // v2.0 tools - Benchmark
+    expect(toolNames).toContain('titan_benchmark');
   });
 
   it('should have required fields in tool definitions', () => {
