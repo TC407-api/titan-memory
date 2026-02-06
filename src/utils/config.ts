@@ -134,6 +134,9 @@ const DEFAULT_CONFIG: TitanConfig = {
     rerankEnabled: true,
     summarizeEnabled: false,
   },
+
+  // Benchmark Raw Mode - OFF by default
+  rawMode: false,
 };
 
 let currentConfig: TitanConfig = { ...DEFAULT_CONFIG };

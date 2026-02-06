@@ -208,6 +208,10 @@ export interface TitanConfig {
 
   // LLM Turbo Layer (v2.1)
   llm: LLMConfig;
+
+  // Benchmark Raw Mode (v2.1)
+  // Disables safety overhead for clean benchmark measurement
+  rawMode: boolean;  // Default: false
 }
 
 // Pre-compaction context

@@ -71,4 +71,35 @@ export interface BenchmarkOptions {
   outputPath?: string;
   categories?: ('retrieval' | 'latency' | 'token-efficiency' | 'accuracy')[];
   parallel?: boolean;
+  rawMode?: boolean;   // Disable safety overhead for clean measurement
+  runs?: number;       // Number of runs for statistical averaging (default: 1)
+  llmMode?: boolean;   // Enable LLM Turbo Layer for benchmarks
+}
+
+/**
+ * Multi-run benchmark report with statistics
+ */
+export interface MultiRunReport {
+  mode: 'production' | 'raw' | 'turbo';
+  runs: number;
+  timestamp: string;
+  environment: {
+    platform: string;
+    nodeVersion: string;
+    titanVersion: string;
+  };
+  perRunResults: BenchmarkSuiteResult[];
+  statistics: {
+    meanScore: number;
+    stddev: number;
+    minScore: number;
+    maxScore: number;
+    perBenchmark: Record<string, {
+      mean: number;
+      stddev: number;
+      min: number;
+      max: number;
+      passRate: number;
+    }>;
+  };
 }

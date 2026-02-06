@@ -1,9 +1,10 @@
 /**
  * Titan Memory Benchmark Suite
- * v2.0 - Competitive Upgrade
+ * v2.1 - Multi-Run + Raw Mode
  *
  * Entry point for running all benchmarks.
  * Each benchmark gets its own isolated Titan instance to prevent data interference.
+ * Supports rawMode (safety overhead off) and multi-run averaging for statistical rigor.
  */
 
 export * from './types.js';
@@ -22,7 +23,7 @@ import { createLongMemEvalBenchmarks } from './longmemeval.js';
 import { createTokenEfficiencyBenchmarks } from './token-efficiency.js';
 import { TitanMemory, initTitanForProject } from '../titan.js';
 import { updateConfig } from '../utils/config.js';
-import { BenchmarkOptions, BenchmarkSuiteResult } from './types.js';
+import { BenchmarkOptions, BenchmarkSuiteResult, MultiRunReport } from './types.js';
 
 let benchCounter = 0;
 
@@ -60,7 +61,7 @@ function isolateBenchmark(
 }
 
 /**
- * Run the complete benchmark suite
+ * Run the complete benchmark suite (single run)
  * Each benchmark gets its own isolated Titan instance
  * to prevent cross-benchmark data interference
  */
@@ -70,7 +71,20 @@ export async function runBenchmarkSuite(
   // Disable surprise filtering during benchmarks so all data gets stored
   updateConfig({ enableSurpriseFiltering: false });
 
-  const suite = new BenchmarkSuite('Titan Memory v2.0');
+  // Raw mode: disable safety overhead (validator, adaptive reordering, post-store processing)
+  if (options?.rawMode) {
+    updateConfig({ rawMode: true });
+  } else {
+    updateConfig({ rawMode: false });
+  }
+
+  const suiteName = options?.rawMode
+    ? 'Titan Memory v2.1 (Raw Mode)'
+    : options?.llmMode
+      ? 'Titan Memory v2.1 (LLM Turbo)'
+      : 'Titan Memory v2.1 (Production)';
+
+  const suite = new BenchmarkSuite(suiteName);
 
   // Accuracy benchmarks — each gets isolated titan
   for (const b of isolateBenchmark(createRetrievalAccuracyBenchmarks, 'accuracy')) {
@@ -110,7 +124,115 @@ export async function runBenchmarkSuite(
   await titanCompress.close();
   await titanLatency.close();
 
+  // Reset rawMode after run
+  updateConfig({ rawMode: false });
+
   return results;
+}
+
+/**
+ * Calculate standard deviation
+ */
+function stddev(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const squaredDiffs = values.map(v => (v - mean) ** 2);
+  return Math.sqrt(squaredDiffs.reduce((a, b) => a + b, 0) / (values.length - 1));
+}
+
+/**
+ * Run benchmark suite multiple times and produce statistical report
+ */
+export async function runMultiRunBenchmark(
+  options: BenchmarkOptions & { runs: number }
+): Promise<MultiRunReport> {
+  const runs = Math.max(1, options.runs);
+  const mode = options.rawMode ? 'raw' : options.llmMode ? 'turbo' : 'production';
+
+  console.log(`\n${'═'.repeat(60)}`);
+  console.log(`  MULTI-RUN BENCHMARK: ${mode.toUpperCase()} MODE (${runs} runs)`);
+  console.log(`${'═'.repeat(60)}\n`);
+
+  const perRunResults: BenchmarkSuiteResult[] = [];
+
+  for (let i = 0; i < runs; i++) {
+    console.log(`\n--- Run ${i + 1}/${runs} ---\n`);
+    const result = await runBenchmarkSuite({
+      ...options,
+      verbose: false, // Quiet individual runs
+    });
+    perRunResults.push(result);
+    console.log(`  Run ${i + 1}: ${result.overallScore.toFixed(1)}/100 (${result.passed}/${result.totalTests} passed)`);
+  }
+
+  // Collect all unique benchmark names
+  const benchmarkNames = new Set<string>();
+  for (const run of perRunResults) {
+    for (const r of run.results) {
+      benchmarkNames.add(r.name);
+    }
+  }
+
+  // Per-benchmark statistics
+  const perBenchmark: MultiRunReport['statistics']['perBenchmark'] = {};
+  for (const name of benchmarkNames) {
+    const scores = perRunResults
+      .map(run => run.results.find(r => r.name === name)?.score ?? 0);
+    const passes = perRunResults
+      .map(run => run.results.find(r => r.name === name)?.passed ? 1 : 0) as number[];
+
+    perBenchmark[name] = {
+      mean: scores.reduce((a, b) => a + b, 0) / scores.length,
+      stddev: stddev(scores),
+      min: Math.min(...scores),
+      max: Math.max(...scores),
+      passRate: passes.reduce((a: number, b: number) => a + b, 0) / passes.length,
+    };
+  }
+
+  // Overall statistics
+  const overallScores = perRunResults.map(r => r.overallScore);
+
+  const pkg = await import('../../package.json', { with: { type: 'json' } }).catch(() => ({
+    default: { version: 'unknown' },
+  }));
+
+  const report: MultiRunReport = {
+    mode,
+    runs,
+    timestamp: new Date().toISOString(),
+    environment: {
+      platform: process.platform,
+      nodeVersion: process.version,
+      titanVersion: pkg.default.version || '2.1.0',
+    },
+    perRunResults,
+    statistics: {
+      meanScore: overallScores.reduce((a, b) => a + b, 0) / overallScores.length,
+      stddev: stddev(overallScores),
+      minScore: Math.min(...overallScores),
+      maxScore: Math.max(...overallScores),
+      perBenchmark,
+    },
+  };
+
+  // Print summary
+  console.log(`\n${'═'.repeat(60)}`);
+  console.log(`  MULTI-RUN RESULTS: ${mode.toUpperCase()} (${runs} runs)`);
+  console.log(`${'═'.repeat(60)}`);
+  console.log(`  Mean Score:   ${report.statistics.meanScore.toFixed(1)} ± ${report.statistics.stddev.toFixed(1)}`);
+  console.log(`  Range:        ${report.statistics.minScore.toFixed(1)} - ${report.statistics.maxScore.toFixed(1)}`);
+  console.log(`  Environment:  ${report.environment.platform} / Node ${report.environment.nodeVersion}`);
+  console.log(`${'─'.repeat(60)}`);
+
+  // Per-benchmark breakdown
+  for (const [name, stats] of Object.entries(report.statistics.perBenchmark)) {
+    const passRateStr = `${(stats.passRate * 100).toFixed(0)}%`;
+    console.log(`  ${name.padEnd(35)} ${stats.mean.toFixed(1)} ± ${stats.stddev.toFixed(1)}  [${passRateStr} pass]`);
+  }
+  console.log(`${'═'.repeat(60)}\n`);
+
+  return report;
 }
 
 /**
@@ -118,7 +240,7 @@ export async function runBenchmarkSuite(
  */
 export async function main(): Promise<void> {
   console.log('╔════════════════════════════════════════╗');
-  console.log('║   Titan Memory v2.0 Benchmark Suite    ║');
+  console.log('║   Titan Memory v2.1 Benchmark Suite    ║');
   console.log('╚════════════════════════════════════════╝\n');
 
   const results = await runBenchmarkSuite({

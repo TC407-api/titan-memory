@@ -544,10 +544,13 @@ export class TitanMemory {
       },
     };
 
-    // Phase 3: Validate before storing
-    const validation = await this.validator.validateBeforeStore(entry as MemoryEntry);
-    if (!validation.valid) {
-      console.warn('Memory validation issues:', validation.issues.map(i => i.description));
+    // Phase 3: Validate before storing (skip in rawMode to remove overhead)
+    const isRawMode = loadConfig().rawMode;
+    if (!isRawMode) {
+      const validation = await this.validator.validateBeforeStore(entry as MemoryEntry);
+      if (!validation.valid) {
+        console.warn('Memory validation issues:', validation.issues.map(i => i.description));
+      }
     }
 
     // Store in primary layer
@@ -566,15 +569,20 @@ export class TitanMemory {
     }
 
     // v2.0: Record memory write for NOOP ratio tracking
-    this.noopLogger.recordMemoryWrite().catch(() => {});
+    if (!isRawMode) {
+      this.noopLogger.recordMemoryWrite().catch(() => {});
+    }
 
-    // Phase 3: Post-storage processing (async, non-blocking)
-    this.processPostStore(result, content).catch(error => {
-      console.error('Post-store processing failed:', {
-        memoryId: result.id,
-        error: error instanceof Error ? error.message : String(error),
+    // Phase 3: Post-storage processing (skip in rawMode — removes graph extraction,
+    // decision tracing, world model linking, continual learning, forgetting risk checks)
+    if (!isRawMode) {
+      this.processPostStore(result, content).catch(error => {
+        console.error('Post-store processing failed:', {
+          memoryId: result.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
-    });
+    }
 
     return result;
   }
@@ -710,16 +718,19 @@ export class TitanMemory {
     weightedResults.sort((a, b) => b.weightedScore - a.weightedScore);
     fusedMemories = weightedResults.map(w => w.memory).slice(0, limit);
 
-    // Phase 3: Prioritize using adaptive memory
-    fusedMemories = await this.adaptiveMemory.prioritizeForRecall(
-      fusedMemories,
-      query,
-      limit
-    );
+    // Phase 3: Prioritize using adaptive memory (skip in rawMode to remove reordering overhead)
+    const isRawRecall = loadConfig().rawMode;
+    if (!isRawRecall) {
+      fusedMemories = await this.adaptiveMemory.prioritizeForRecall(
+        fusedMemories,
+        query,
+        limit
+      );
 
-    // Phase 3: Record access for each returned memory
-    for (const memory of fusedMemories) {
-      await this.adaptiveMemory.recordAccess(memory.id, query);
+      // Phase 3: Record access for each returned memory
+      for (const memory of fusedMemories) {
+        await this.adaptiveMemory.recordAccess(memory.id, query);
+      }
     }
 
     // Cortex Hook 3: Enrich results with category info

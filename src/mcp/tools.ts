@@ -187,13 +187,17 @@ export const ToolSchemas = {
       .describe('Output format'),
   }),
 
-  // v2.0 Benchmark schema (v2.1: llmMode added)
+  // v2.1 Benchmark schema with rawMode + multi-run
   titan_benchmark: z.object({
     categories: z.array(z.enum(['retrieval', 'latency', 'token-efficiency', 'accuracy'])).optional()
       .describe('Categories to run (default: all)'),
     verbose: z.boolean().default(false).optional().describe('Show detailed output'),
     llmMode: z.boolean().default(false).optional()
       .describe('v2.1: Temporarily enable LLM Turbo Layer for this benchmark run'),
+    rawMode: z.boolean().default(false).optional()
+      .describe('v2.1: Disable safety overhead (validator, adaptive reordering, post-store) for clean measurement'),
+    runs: z.number().min(1).max(10).default(1).optional()
+      .describe('v2.1: Number of runs for statistical averaging (default: 1, max: 10)'),
   }),
 };
 
@@ -576,7 +580,7 @@ export const ToolDefinitions = [
   // v2.0 Benchmark tool
   {
     name: 'titan_benchmark',
-    description: 'v2.0: Run the Titan Memory benchmark suite. Tests latency, retrieval accuracy, and overall system health.',
+    description: 'v2.1: Run the Titan Memory benchmark suite. Tests latency, retrieval accuracy, and overall system health. Supports raw mode (safety off) and multi-run averaging.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -586,7 +590,9 @@ export const ToolDefinitions = [
           description: 'Categories to run (default: all)',
         },
         verbose: { type: 'boolean', description: 'Show detailed output (default: false)' },
-        llmMode: { type: 'boolean', description: 'v2.1: Temporarily enable LLM Turbo Layer for this benchmark run (default: false)' },
+        llmMode: { type: 'boolean', description: 'v2.1: Enable LLM Turbo Layer for this run (default: false)' },
+        rawMode: { type: 'boolean', description: 'v2.1: Disable safety overhead for clean measurement (default: false)' },
+        runs: { type: 'number', description: 'v2.1: Number of runs for statistical averaging (default: 1, max: 10)' },
       },
       required: [],
     },
@@ -935,9 +941,9 @@ export class ToolHandler {
           // v2.1: Temporarily enable LLM config for benchmark if llmMode requested
           let configRestorer: (() => void) | undefined;
           if (parsed.llmMode) {
-            const { updateConfig, getConfig } = await import('../utils/config.js');
-            const prevLlm = { ...getConfig().llm };
-            updateConfig({
+            const { updateConfig: uc, getConfig: gc } = await import('../utils/config.js');
+            const prevLlm = { ...gc().llm };
+            uc({
               llm: {
                 ...prevLlm,
                 enabled: true,
@@ -947,16 +953,46 @@ export class ToolHandler {
                 summarizeEnabled: false,
               },
             });
-            configRestorer = () => updateConfig({ llm: prevLlm });
+            configRestorer = () => uc({ llm: prevLlm });
           }
 
           try {
-            // Dynamic import to avoid circular dependencies
-            const { runBenchmarkSuite } = await import('../benchmarks/index.js');
-            result = await runBenchmarkSuite({
+            const benchmarkModule = await import('../benchmarks/index.js');
+            const benchOpts = {
               categories: parsed.categories as ('retrieval' | 'latency' | 'token-efficiency' | 'accuracy')[] | undefined,
               verbose: parsed.verbose,
-            });
+              rawMode: parsed.rawMode,
+              llmMode: parsed.llmMode,
+            };
+
+            // v2.1: Multi-run with statistics
+            if (parsed.runs && parsed.runs > 1) {
+              const multiResult = await benchmarkModule.runMultiRunBenchmark({
+                ...benchOpts,
+                runs: parsed.runs,
+              });
+              // Save raw data to file for third-party verification
+              const fs = await import('fs');
+              const dataDir = 'benchmarks/data';
+              if (!fs.existsSync(dataDir)) {
+                fs.mkdirSync(dataDir, { recursive: true });
+              }
+              const filename = `${multiResult.mode}-${multiResult.runs}runs-${Date.now()}.json`;
+              fs.writeFileSync(
+                `${dataDir}/${filename}`,
+                JSON.stringify(multiResult, null, 2)
+              );
+              result = {
+                ...multiResult.statistics,
+                mode: multiResult.mode,
+                runs: multiResult.runs,
+                timestamp: multiResult.timestamp,
+                environment: multiResult.environment,
+                dataFile: `benchmarks/data/${filename}`,
+              };
+            } else {
+              result = await benchmarkModule.runBenchmarkSuite(benchOpts);
+            }
           } finally {
             configRestorer?.();
           }
