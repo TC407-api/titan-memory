@@ -765,20 +765,30 @@ export class TitanMemory {
             compressionRate: librarianResult.compressionRate,
           };
 
-          // v2.1: When LLM rerank is active, reorder fusedMemories based on gold sentence scores
-          // This propagates LLM semantic understanding into the actual recall ranking
+          // v2.1: When LLM rerank is active, blend gold sentence scores with original ranking
+          // Skip reranking for temporal queries to preserve time ordering
           if (config.llm?.enabled && config.llm?.rerankEnabled) {
-            const memoryScores = new Map<string, number>();
-            for (const gs of librarianResult.goldSentences) {
-              const current = memoryScores.get(gs.sourceMemoryId) || 0;
-              memoryScores.set(gs.sourceMemoryId, Math.max(current, gs.score));
-            }
-            if (memoryScores.size > 0) {
-              fusedMemories.sort((a, b) => {
-                const scoreA = memoryScores.get(a.id) ?? -1;
-                const scoreB = memoryScores.get(b.id) ?? -1;
-                return scoreB - scoreA;
-              });
+            const queryIntent = this.intentDetector.detect(query);
+            // Temporal queries rely on time-based ordering — don't let LLM disrupt it
+            if (queryIntent.type !== 'timeline_query') {
+              const memoryScores = new Map<string, number>();
+              for (const gs of librarianResult.goldSentences) {
+                const current = memoryScores.get(gs.sourceMemoryId) || 0;
+                memoryScores.set(gs.sourceMemoryId, Math.max(current, gs.score));
+              }
+              if (memoryScores.size > 0) {
+                const originalRank = new Map(fusedMemories.map((m, i) => [m.id, i]));
+                const total = fusedMemories.length;
+
+                fusedMemories.sort((a, b) => {
+                  const llmA = memoryScores.get(a.id) ?? 0;
+                  const llmB = memoryScores.get(b.id) ?? 0;
+                  const origA = 1 - (originalRank.get(a.id) ?? total) / total;
+                  const origB = 1 - (originalRank.get(b.id) ?? total) / total;
+                  // 60% LLM semantic + 40% original ordering
+                  return (llmB * 0.6 + origB * 0.4) - (llmA * 0.6 + origA * 0.4);
+                });
+              }
             }
           }
         }

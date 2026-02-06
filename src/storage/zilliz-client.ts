@@ -51,7 +51,7 @@ export class ZillizClient implements IVectorStorage {
   private readonly dimension: number;
   private readonly metricType: string;
   private readonly embeddingGenerator: IEmbeddingGenerator;
-  private readonly enableHybridSearch: boolean;
+  private enableHybridSearch: boolean;
   private readonly bm25K1: number;
   private readonly bm25B: number;
   private isInitialized: boolean = false;
@@ -109,22 +109,96 @@ export class ZillizClient implements IVectorStorage {
 
   private async createCollection(): Promise<void> {
     if (this.enableHybridSearch) {
-      // Create collection with hybrid search schema (dense + sparse vectors)
-      await this.createHybridCollection();
-    } else {
-      // Create collection with explicit schema (VarChar id for UUID support)
-      const schema = {
-        autoId: false,
-        enableDynamicField: true,
-        fields: [
-          { fieldName: 'id', dataType: 'VarChar', isPrimary: true, elementTypeParams: { max_length: '64' } },
-          { fieldName: 'content', dataType: 'VarChar', elementTypeParams: { max_length: '8000' } },
-          { fieldName: 'embedding', dataType: 'FloatVector', elementTypeParams: { dim: String(this.dimension) } },
-          { fieldName: 'timestamp', dataType: 'VarChar', elementTypeParams: { max_length: '64' } },
-          { fieldName: 'metadata', dataType: 'VarChar', elementTypeParams: { max_length: '16000' } },
-        ],
-      };
+      const success = await this.createHybridCollection();
+      if (success) return;
+      // Hybrid creation failed — fall back to regular collection
+      this.enableHybridSearch = false;
+    }
 
+    await this.createRegularCollection();
+  }
+
+  private async createRegularCollection(): Promise<void> {
+    // Create collection with explicit schema (VarChar id for UUID support)
+    const schema = {
+      autoId: false,
+      enableDynamicField: true,
+      fields: [
+        { fieldName: 'id', dataType: 'VarChar', isPrimary: true, elementTypeParams: { max_length: '64' } },
+        { fieldName: 'content', dataType: 'VarChar', elementTypeParams: { max_length: '8000' } },
+        { fieldName: 'embedding', dataType: 'FloatVector', elementTypeParams: { dim: String(this.dimension) } },
+        { fieldName: 'timestamp', dataType: 'VarChar', elementTypeParams: { max_length: '64' } },
+        { fieldName: 'metadata', dataType: 'VarChar', elementTypeParams: { max_length: '16000' } },
+      ],
+    };
+
+    const resp = await fetch(`${this.uri}/v2/vectordb/collections/create`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        collectionName: this.collection,
+        schema,
+      }),
+    });
+    const data = await resp.json() as { code: number; message?: string };
+    if (data.code !== 0) {
+      console.warn(`Failed to create collection ${this.collection}: ${data.message}`);
+    }
+
+    // Create index for the embedding field
+    await fetch(`${this.uri}/v2/vectordb/indexes/create`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        collectionName: this.collection,
+        indexParams: [{
+          fieldName: 'embedding',
+          indexName: 'embedding_idx',
+          indexType: 'AUTOINDEX',
+          metricType: this.metricType,
+        }],
+      }),
+    });
+
+    // Load collection into memory for searching
+    await this.loadCollection();
+  }
+
+  /**
+   * Create collection with hybrid search schema supporting both dense and sparse vectors
+   * Returns true on success, false on failure (caller should fall back to regular collection)
+   */
+  private async createHybridCollection(): Promise<boolean> {
+    // Define schema with both dense and sparse vector fields
+    const schema = {
+      autoId: false,
+      enableDynamicField: true,
+      fields: [
+        { fieldName: 'id', dataType: 'VarChar', isPrimary: true, elementTypeParams: { max_length: '64' } },
+        { fieldName: 'content', dataType: 'VarChar', elementTypeParams: { max_length: '8000', enable_analyzer: true } },
+        { fieldName: 'embedding', dataType: 'FloatVector', elementTypeParams: { dim: String(this.dimension) } },
+        { fieldName: 'sparse_embedding', dataType: 'SparseFloatVector' },
+        { fieldName: 'timestamp', dataType: 'VarChar', elementTypeParams: { max_length: '64' } },
+        { fieldName: 'metadata', dataType: 'VarChar', elementTypeParams: { max_length: '16000' } },
+      ],
+      functions: [
+        {
+          name: 'content_bm25',
+          type: 'BM25',
+          inputFieldNames: ['content'],
+          outputFieldNames: ['sparse_embedding'],
+        },
+      ],
+    };
+
+    try {
+      // Create collection with schema
       const resp = await fetch(`${this.uri}/v2/vectordb/collections/create`, {
         method: 'POST',
         headers: {
@@ -138,105 +212,21 @@ export class ZillizClient implements IVectorStorage {
       });
       const data = await resp.json() as { code: number; message?: string };
       if (data.code !== 0) {
-        console.warn(`Failed to create collection ${this.collection}: ${data.message}`);
+        console.warn(`Hybrid collection creation failed for ${this.collection}: ${data.message}`);
+        return false;
       }
 
-      // Create index for the embedding field
-      await fetch(`${this.uri}/v2/vectordb/indexes/create`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          collectionName: this.collection,
-          indexParams: [{
-            fieldName: 'embedding',
-            indexName: 'embedding_idx',
-            indexType: 'AUTOINDEX',
-            metricType: this.metricType,
-          }],
-        }),
-      });
+      // Create indexes for both dense and sparse vectors
+      await this.createHybridIndexes();
 
       // Load collection into memory for searching
-      await fetch(`${this.uri}/v2/vectordb/collections/load`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ collectionName: this.collection }),
-      });
+      await this.loadCollection();
+
+      return true;
+    } catch (error) {
+      console.warn(`Hybrid collection creation error for ${this.collection}:`, error);
+      return false;
     }
-  }
-
-  /**
-   * Create collection with hybrid search schema supporting both dense and sparse vectors
-   */
-  private async createHybridCollection(): Promise<void> {
-    // Define schema with both dense and sparse vector fields
-    const schema = {
-      autoId: false,
-      enableDynamicField: true,
-      fields: [
-        {
-          fieldName: 'id',
-          dataType: 'VarChar',
-          isPrimary: true,
-          maxLength: 64,
-        },
-        {
-          fieldName: 'content',
-          dataType: 'VarChar',
-          maxLength: 8000,
-          enableAnalyzer: true, // Enable text analysis for BM25
-        },
-        {
-          fieldName: 'embedding',
-          dataType: 'FloatVector',
-          dim: this.dimension,
-        },
-        {
-          fieldName: 'sparse_embedding',
-          dataType: 'SparseFloatVector',
-        },
-        {
-          fieldName: 'timestamp',
-          dataType: 'VarChar',
-          maxLength: 64,
-        },
-        {
-          fieldName: 'metadata',
-          dataType: 'VarChar',
-          maxLength: 16000,
-        },
-      ],
-      functions: [
-        {
-          name: 'content_bm25',
-          type: 'BM25',
-          inputFieldNames: ['content'],
-          outputFieldNames: ['sparse_embedding'],
-        },
-      ],
-    };
-
-    // Create collection with schema
-    await fetch(`${this.uri}/v2/vectordb/collections/create`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        collectionName: this.collection,
-        schema,
-      }),
-    });
-
-    // Create indexes for both dense and sparse vectors
-    await this.createHybridIndexes();
   }
 
   /**
@@ -272,6 +262,24 @@ export class ZillizClient implements IVectorStorage {
         ],
       }),
     });
+  }
+
+  /**
+   * Load collection into memory for searching
+   */
+  private async loadCollection(): Promise<void> {
+    const resp = await fetch(`${this.uri}/v2/vectordb/collections/load`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ collectionName: this.collection }),
+    });
+    const data = await resp.json() as { code: number; message?: string };
+    if (data.code !== 0) {
+      console.warn(`Failed to load collection ${this.collection}: ${data.message}`);
+    }
   }
 
   async insert(entry: MemoryEntry): Promise<void> {

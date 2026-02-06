@@ -22,8 +22,9 @@ import { createLoComoBenchmarks } from './locomo.js';
 import { createLongMemEvalBenchmarks } from './longmemeval.js';
 import { createTokenEfficiencyBenchmarks } from './token-efficiency.js';
 import { TitanMemory, initTitanForProject } from '../titan.js';
-import { updateConfig } from '../utils/config.js';
+import { loadConfig, updateConfig } from '../utils/config.js';
 import { BenchmarkOptions, BenchmarkSuiteResult, MultiRunReport } from './types.js';
+import type { LLMProvider } from '../llm/types.js';
 
 let benchCounter = 0;
 
@@ -68,14 +69,55 @@ function isolateBenchmark(
 export async function runBenchmarkSuite(
   options?: BenchmarkOptions
 ): Promise<BenchmarkSuiteResult> {
+  // Load config.json FIRST so production settings (cortex, voyage, etc.) are used
+  loadConfig();
+
   // Disable surprise filtering during benchmarks so all data gets stored
   updateConfig({ enableSurpriseFiltering: false });
 
   // Raw mode: disable safety overhead (validator, adaptive reordering, post-store processing)
-  if (options?.rawMode) {
-    updateConfig({ rawMode: true });
-  } else {
-    updateConfig({ rawMode: false });
+  updateConfig({ rawMode: options?.rawMode ?? false });
+
+  // LLM Turbo mode: enable LLM-enhanced classification, reranking, extraction
+  if (options?.llmMode) {
+    const currentLlm = loadConfig().llm;
+    // Auto-detect best available LLM provider
+    let provider: LLMProvider = currentLlm?.provider || 'anthropic';
+    let model = currentLlm?.model || 'claude-sonnet-4-5-20250929';
+    let apiKey = currentLlm?.apiKey || '';
+    let baseUrl = currentLlm?.baseUrl;
+
+    if (process.env.GROQ_API_KEY) {
+      provider = 'openai-compatible';
+      baseUrl = 'https://api.groq.com/openai/v1';
+      model = 'llama-3.3-70b-versatile';
+      apiKey = process.env.GROQ_API_KEY;
+    } else if (process.env.ANTHROPIC_API_KEY) {
+      provider = 'anthropic';
+      apiKey = process.env.ANTHROPIC_API_KEY;
+    } else if (process.env.OPENAI_API_KEY) {
+      provider = 'openai';
+      model = 'gpt-4o-mini';
+      apiKey = process.env.OPENAI_API_KEY;
+    }
+
+    updateConfig({
+      llm: {
+        ...currentLlm,
+        enabled: true,
+        provider,
+        model,
+        apiKey,
+        baseUrl,
+        timeout: currentLlm?.timeout || 15000,
+        maxTokensPerRequest: currentLlm?.maxTokensPerRequest || 512,
+        classifyEnabled: true,
+        extractEnabled: true,
+        rerankEnabled: true,
+        classifyConfidenceThreshold: currentLlm?.classifyConfidenceThreshold || 0.5,
+        summarizeEnabled: false,
+      },
+    });
   }
 
   const suiteName = options?.rawMode
@@ -124,8 +166,12 @@ export async function runBenchmarkSuite(
   await titanCompress.close();
   await titanLatency.close();
 
-  // Reset rawMode after run
+  // Reset benchmark-specific overrides after run
   updateConfig({ rawMode: false });
+  if (options?.llmMode) {
+    const currentLlm = loadConfig().llm || {};
+    updateConfig({ llm: { ...currentLlm, enabled: false } });
+  }
 
   return results;
 }
