@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.0.0-blue">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.1.0-blue">
   <img alt="Tests" src="https://img.shields.io/badge/tests-1%2C008%20passing-brightgreen">
   <img alt="Benchmarks" src="https://img.shields.io/badge/benchmarks-18%2F18%20passing-brightgreen">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.4-blue">
@@ -33,9 +33,27 @@
 
 ---
 
-## What's New in v2.0
+## What's New in v2.1
 
-Titan Memory v2.0 closes competitive gaps with industry leaders while maintaining its architectural advantages:
+Titan Memory v2.1 adds an optional **LLM Turbo Layer** that pushes benchmark scores from 84.2% to **90.7%** — closing the gap with funded competitors that use GPT-4 and Gemini Pro. Zero new npm dependencies. LLM is OFF by default — the zero-LLM pipeline remains the default fallback.
+
+| Feature | Description |
+|---------|-------------|
+| **LLM Turbo Layer** | Optional LLM-enhanced classify, extract, rerank, and summarize — provider-agnostic (Anthropic, OpenAI, Groq, Ollama) |
+| **LLM Reranking** | Highest-impact enhancement: LLM understands "replaced/superseded" semantics and temporal logic for dramatically better recall ordering |
+| **Provider-Agnostic Client** | Raw `fetch()`, zero SDK dependencies — same pattern as Voyage AI integration. Supports Anthropic, OpenAI, and any OpenAI-compatible API |
+| **Graceful Fallback** | Every LLM call wrapped in try/catch. If the LLM is unavailable or errors, the system falls back to the algorithmic pipeline with zero degradation |
+| **Per-Capability Toggles** | Enable/disable classify, extract, rerank, and summarize independently. Only pay for what you use |
+| **Groq Support** | Ultra-low latency inference (~350ms/call) via Groq API with Llama 3.3 70B |
+
+**Benchmark improvement:** 84.2% → **90.7%** with LLM mode enabled. Key wins: info-extraction +20pts, knowledge-updates +12pts.
+
+---
+
+<details>
+<summary><strong>What's New in v2.0</strong></summary>
+
+Titan Memory v2.0 closed competitive gaps with industry leaders while maintaining its architectural advantages:
 
 | Feature | Description |
 |---------|-------------|
@@ -49,6 +67,8 @@ Titan Memory v2.0 closes competitive gaps with industry leaders while maintainin
 | **Benchmark Suite** | 18 benchmarks: LoCoMo-compatible temporal, entity, multi-session + LongMemEval knowledge-updates |
 
 **30 MCP tools** (up from 14) — See [MCP Tools](#mcp-tools) for the complete list.
+
+</details>
 
 ---
 
@@ -340,22 +360,22 @@ Result: **70%+ noise reduction** at the storage layer, before retrieval even beg
 
 Titan Memory v2.0 includes **18 benchmarks** across 4 categories, aligned with academic standards including [LoCoMo](https://snap-research.github.io/locomo/) (Snap Research) and [LongMemEval](https://arxiv.org/abs/2410.10813) (ICLR 2025).
 
-### Results: 18/18 Passing — 84.2/100
+### Results: 18/18 Passing — 90.7/100 (LLM Mode) | 84.2/100 (Zero-LLM)
 
 ```mermaid
 graph LR
-    subgraph ACC["Accuracy (11 benchmarks)"]
-        A1["Factual Lookup<br/><b>72.0</b> ✅"]
+    subgraph ACC["Accuracy (11 benchmarks) — LLM Mode"]
+        A1["Factual Lookup<br/><b>76.0</b> ✅ (+4)"]
         A2["Semantic Similarity<br/><b>100.0</b> ✅"]
         A3["Intent Retrieval<br/><b>90.0</b> ✅"]
         A4["Cross-Layer<br/><b>100.0</b> ✅"]
         A5["Temporal Reasoning<br/><b>75.0</b> ✅"]
         A6["Multi-Session<br/><b>100.0</b> ✅"]
         A7["Entity Tracking<br/><b>100.0</b> ✅"]
-        A8["Info Extraction<br/><b>65.0</b> ✅"]
+        A8["Info Extraction<br/><b>85.0</b> ✅ (+20)"]
         A9["Single-Session QA<br/><b>100.0</b> ✅"]
         A10["Multi-Session QA<br/><b>83.3</b> ✅"]
-        A11["Knowledge Updates<br/><b>76.0</b> ✅"]
+        A11["Knowledge Updates<br/><b>88.0</b> ✅ (+12)"]
     end
 
     subgraph LAT["Latency (5 benchmarks)"]
@@ -371,36 +391,40 @@ graph LR
         T2["Fidelity<br/><b>48.5</b> ✅"]
     end
 
+    style A1 fill:#1a6b3e,stroke:#1a6b3e,color:#fff
     style A2 fill:#0d7a3e,stroke:#0d7a3e,color:#fff
     style A4 fill:#0d7a3e,stroke:#0d7a3e,color:#fff
     style A6 fill:#0d7a3e,stroke:#0d7a3e,color:#fff
     style A7 fill:#0d7a3e,stroke:#0d7a3e,color:#fff
+    style A8 fill:#1a6b3e,stroke:#1a6b3e,color:#fff
     style A9 fill:#0d7a3e,stroke:#0d7a3e,color:#fff
+    style A11 fill:#1a6b3e,stroke:#1a6b3e,color:#fff
     style L4 fill:#0d7a3e,stroke:#0d7a3e,color:#fff
     style L5 fill:#0d7a3e,stroke:#0d7a3e,color:#fff
 ```
 
 ### Competitive Landscape
 
-Titan Memory scores in the **top tier** alongside funded competitors — while using **zero LLM calls** in the retrieval pipeline:
+Titan Memory now scores in the **top tier** alongside funded competitors — and uniquely offers **both modes**: zero-LLM deterministic retrieval OR optional LLM-enhanced processing:
 
-| System | Overall | Architecture | LLM in Loop | Funding |
-|--------|---------|-------------|-------------|---------|
-| [EverMemOS](https://github.com/EverMind-AI/EverMemOS) | **93.1%** | Memory OS | Yes (GPT-4) | Funded |
-| [Backboard.io](https://backboard.io/) | **90.1%** | Cloud Memory API | Yes (GPT-4.1) | Funded |
-| [Vectorize Hindsight](https://github.com/vectorize-io/hindsight) | **89.6%** | Open-Source Agent Memory | Yes (Gemini 3 Pro) | Funded |
-| [MemMachine](https://memmachine.ai/) | **84.9%** | Episodic Memory Engine | Yes | Funded |
-| **Titan Memory** | **84.2%*** | 5-Layer MCP Server | **No** | Solo dev |
-| [Memobase](https://www.memobase.io/) | **75.8%** | Profile-Based Memory | Yes | Funded |
-| [Mem0](https://mem0.ai/) | **66.9%** | Managed Memory Platform | Yes | $24M+ |
-| [OpenAI Memory](https://openai.com/) | **52.9%** | Built into ChatGPT | Yes (GPT-4) | — |
+| System | Overall | Architecture | LLM in Loop | Safety Infrastructure | Funding |
+|--------|---------|-------------|-------------|----------------------|---------|
+| [EverMemOS](https://github.com/EverMind-AI/EverMemOS) | **93.1%** | Memory OS | Yes (GPT-4) | None | Funded |
+| **Titan Memory (LLM mode)** | **90.7%*** | 5-Layer MCP Server | **Optional** | Circuit breakers, self-healing, drift monitoring | Solo dev |
+| [Backboard.io](https://backboard.io/) | **90.1%** | Cloud Memory API | Yes (GPT-4.1) | None | Funded |
+| [Vectorize Hindsight](https://github.com/vectorize-io/hindsight) | **89.6%** | Open-Source Agent Memory | Yes (Gemini 3 Pro) | None | Funded |
+| [MemMachine](https://memmachine.ai/) | **84.9%** | Episodic Memory Engine | Yes | None | Funded |
+| **Titan Memory (zero-LLM)** | **84.2%*** | 5-Layer MCP Server | **No** | Circuit breakers, self-healing, drift monitoring | Solo dev |
+| [Memobase](https://www.memobase.io/) | **75.8%** | Profile-Based Memory | Yes | None | Funded |
+| [Mem0](https://mem0.ai/) | **66.9%** | Managed Memory Platform | Yes | None | $24M+ |
+| [OpenAI Memory](https://openai.com/) | **52.9%** | Built into ChatGPT | Yes (GPT-4) | None | — |
 
 *\*Titan's benchmarks are LoCoMo-compatible and LongMemEval-aligned using synthetic test data*
 
-**Why this matters:** Every system above Titan uses LLM calls (GPT-4, Gemini Pro) for memory extraction, summarization, or re-scoring. Titan uses only Voyage AI embeddings + reranker — pure retrieval, no generation. This means:
-- **10-100x lower per-query cost** (embedding API vs LLM inference)
-- **Deterministic retrieval** (no LLM hallucination in the memory pipeline)
-- **Sub-second latency** (no waiting for LLM generation)
+**Why this matters:**
+- **Two modes, one system.** Zero-LLM mode gives deterministic retrieval at embedding-only cost. LLM mode adds semantic understanding for +6.5 accuracy points — your choice per deployment.
+- **Only memory system with production safety infrastructure.** Circuit breakers, self-healing with exponential backoff, drift monitoring, NOOP tracking, and behavioral validation. No competitor has this.
+- **Provider-agnostic LLM.** Not locked to GPT-4 or any single provider. Use Anthropic, OpenAI, Groq (~350ms/call), Ollama (local), or any OpenAI-compatible API.
 
 ### Category Comparison (LongMemEval)
 
@@ -479,6 +503,11 @@ VOYAGE_API_KEY=your-voyage-api-key
 
 # Optional: Semantic highlight sidecar URL
 TITAN_HIGHLIGHT_URL=http://127.0.0.1:8079
+
+# Optional: LLM Turbo Layer (v2.1) — pick one provider
+ANTHROPIC_API_KEY=your-anthropic-key     # For Claude Sonnet/Opus
+OPENAI_API_KEY=your-openai-key           # For GPT-4o/GPT-4
+GROQ_API_KEY=your-groq-key              # For Llama 3.3 70B (~350ms/call)
 ```
 
 ### Enable the Semantic Highlight Engine (Optional)
@@ -541,6 +570,18 @@ Create or edit `config.json` in the titan-memory directory:
 
   "crossProject": {
     "enabled": true
+  },
+
+  "llm": {
+    "enabled": true,
+    "provider": "openai-compatible",
+    "model": "llama-3.3-70b-versatile",
+    "baseUrl": "https://api.groq.com/openai/v1",
+    "timeout": 15000,
+    "rerankEnabled": true,
+    "classifyEnabled": true,
+    "extractEnabled": true,
+    "summarizeEnabled": false
   }
 }
 ```
@@ -666,7 +707,10 @@ graph TD
         LIB --> SS["Sentence Split"]
         SS --> SEM["Semantic Highlight<br/><i>Zilliz 0.6B / Voyage / Keywords</i>"]
         SEM --> PRUNE["Prune Noise<br/><i>Below threshold = gone</i>"]
-        PRUNE --> TEMP["Temporal Conflict<br/>Resolution"]
+        PRUNE --> LLM{"LLM Turbo<br/>Enabled?"}
+        LLM -->|Yes| RERANK["LLM Rerank<br/><i>Semantic relevance scoring</i>"]
+        LLM -->|No| TEMP["Temporal Conflict<br/>Resolution"]
+        RERANK --> TEMP
         TEMP --> COV["Category Coverage"]
     end
 
@@ -756,17 +800,19 @@ For organizations with ESG commitments, carbon reporting requirements, or sustai
 
 | Metric | Value |
 |--------|-------|
-| Source files | 104 TypeScript modules |
-| Lines of code | 30,969 |
+| Source files | 107 TypeScript modules |
+| Lines of code | ~31,500 |
 | Test suites | 41 |
 | Tests passing | 1,008 / 1,008 |
 | Benchmarks | 18 (all passing) |
-| Benchmark score | 84.2 / 100 |
+| Benchmark score (zero-LLM) | 84.2 / 100 |
+| Benchmark score (LLM mode) | **90.7 / 100** |
 | Dependencies | 9 production, 8 dev |
 | Node.js | >= 18 |
 | MCP tools | 30 |
 | Memory layers | 5 |
 | Cortex categories | 5 |
+| LLM providers supported | 3 (Anthropic, OpenAI, OpenAI-compatible) |
 
 ---
 

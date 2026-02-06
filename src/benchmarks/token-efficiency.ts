@@ -40,7 +40,7 @@ export function createTokenEfficiencyBenchmarks(
         const ratios: number[] = [];
 
         for (const memory of VERBOSE_MEMORIES) {
-          const compressed = compressMemory(memory);
+          const compressed = await compressMemory(memory);
           ratios.push(compressed.compressionRatio);
           totalRatio += compressed.compressionRatio;
         }
@@ -73,7 +73,7 @@ export function createTokenEfficiencyBenchmarks(
         const fidelities: number[] = [];
 
         for (const memory of VERBOSE_MEMORIES) {
-          const compressed = compressMemory(memory);
+          const compressed = await compressMemory(memory);
           const expanded = expandMemory(compressed, { verbosity: 'detailed', format: 'prose' });
 
           fidelities.push(compressed.fidelityScore);

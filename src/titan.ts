@@ -75,6 +75,8 @@ import { PatternMatcher, createPatternMatcher } from './learning/pattern-matcher
 
 // v2.0 imports
 import { NoopLogger, NoopReason, NoopDecision, NoopStats, getNoopLogger } from './trace/noop-log.js';
+// v2.1 LLM Turbo Layer
+import { LLMClient } from './llm/client.js';
 import {
   IntentDetector,
   QueryIntent,
@@ -143,6 +145,9 @@ export class TitanMemory {
   private proactiveSuggestionsManager?: ProactiveSuggestionsManager;
   private crossProjectLearner?: CrossProjectLearningManager;
   private patternMatcher?: PatternMatcher;
+
+  // v2.1: LLM Turbo Layer
+  private llmClient?: LLMClient;
 
   // v2.0: NOOP Logger
   private noopLogger: NoopLogger;
@@ -278,6 +283,19 @@ export class TitanMemory {
         cortexConfig,
         this.semanticHighlighter
       );
+
+      // v2.1: LLM Turbo Layer — inject into pipeline if enabled
+      if (config.llm?.enabled) {
+        try {
+          this.llmClient = new LLMClient(config.llm);
+          if (this.llmClient.isAvailable()) {
+            this.cortexPipeline.setLLMClient(this.llmClient, config.llm);
+          }
+        } catch (error) {
+          console.warn('Failed to initialize LLM Turbo Layer:', error);
+          this.llmClient = undefined;
+        }
+      }
 
       // Category summarizer
       this.categorySummarizer = new CategorySummarizer();
@@ -498,7 +516,7 @@ export class TitanMemory {
     let cortexMeta: Record<string, unknown> = {};
     if (this.cortexPipeline) {
       try {
-        const pipelineResult = this.cortexPipeline.processForStore(content);
+        const pipelineResult = await this.cortexPipeline.processForStore(content);
         cortexMeta = pipelineResult.enrichedMetadata;
       } catch (error) {
         // Cortex failures are non-blocking
@@ -735,6 +753,23 @@ export class TitanMemory {
             prunedCount: librarianResult.prunedCount,
             compressionRate: librarianResult.compressionRate,
           };
+
+          // v2.1: When LLM rerank is active, reorder fusedMemories based on gold sentence scores
+          // This propagates LLM semantic understanding into the actual recall ranking
+          if (config.llm?.enabled && config.llm?.rerankEnabled) {
+            const memoryScores = new Map<string, number>();
+            for (const gs of librarianResult.goldSentences) {
+              const current = memoryScores.get(gs.sourceMemoryId) || 0;
+              memoryScores.set(gs.sourceMemoryId, Math.max(current, gs.score));
+            }
+            if (memoryScores.size > 0) {
+              fusedMemories.sort((a, b) => {
+                const scoreA = memoryScores.get(a.id) ?? -1;
+                const scoreB = memoryScores.get(b.id) ?? -1;
+                return scoreB - scoreA;
+              });
+            }
+          }
         }
       } catch {
         // Non-critical - continue without highlighting
@@ -1160,7 +1195,9 @@ export class TitanMemory {
       throw new Error(`Memory not found: ${memoryId}`);
     }
     const { compressMemory } = await import('./compression/compressor.js');
-    return compressMemory(memory.content, options);
+    const config = loadConfig();
+    const llm = (config.llm?.enabled && config.llm?.summarizeEnabled) ? this.llmClient : undefined;
+    return compressMemory(memory.content, options, llm);
   }
 
   /**
@@ -1832,7 +1869,43 @@ export class TitanMemory {
     // Include Cortex status
     (result as Record<string, unknown>).cortex = this.getCortexStatus();
 
+    // Include LLM Turbo Layer status
+    (result as Record<string, unknown>).llmTurbo = this.getLLMStatus();
+
     return result;
+  }
+
+  /**
+   * Get LLM Turbo Layer status for observability
+   */
+  getLLMStatus(): {
+    enabled: boolean;
+    available: boolean;
+    provider?: string;
+    model?: string;
+    capabilities: {
+      classify: boolean;
+      extract: boolean;
+      rerank: boolean;
+      summarize: boolean;
+    };
+  } {
+    const config = loadConfig();
+    const enabled = config.llm?.enabled ?? false;
+    const available = this.llmClient?.isAvailable() ?? false;
+
+    return {
+      enabled,
+      available,
+      provider: enabled ? config.llm.provider : undefined,
+      model: enabled ? config.llm.model : undefined,
+      capabilities: {
+        classify: enabled && (config.llm.classifyEnabled ?? true),
+        extract: enabled && (config.llm.extractEnabled ?? true),
+        rerank: enabled && (config.llm.rerankEnabled ?? true),
+        summarize: enabled && (config.llm.summarizeEnabled ?? false),
+      },
+    };
   }
 
   // ==================== Cortex API Methods ====================

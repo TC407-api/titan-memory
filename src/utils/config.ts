@@ -120,6 +120,20 @@ const DEFAULT_CONFIG: TitanConfig = {
     bm25K1: 1.2,                   // BM25 term frequency saturation
     bm25B: 0.75,                   // BM25 length normalization
   },
+
+  // LLM Turbo Layer (v2.1) - OFF by default
+  llm: {
+    enabled: false,
+    provider: 'anthropic',
+    model: 'claude-sonnet-4-5-20250929',
+    timeout: 15000,
+    maxTokensPerRequest: 512,
+    classifyEnabled: true,
+    classifyConfidenceThreshold: 0.5,
+    extractEnabled: true,
+    rerankEnabled: true,
+    summarizeEnabled: false,
+  },
 };
 
 let currentConfig: TitanConfig = { ...DEFAULT_CONFIG };
@@ -174,6 +188,17 @@ export function loadConfig(configPath?: string): TitanConfig {
   }
   if (process.env.TITAN_OFFLINE_MODE === 'true') {
     currentConfig.offlineMode = true;
+  }
+
+  // LLM Turbo Layer env vars
+  if (process.env.ANTHROPIC_API_KEY && currentConfig.llm?.provider === 'anthropic') {
+    currentConfig.llm = { ...currentConfig.llm, apiKey: process.env.ANTHROPIC_API_KEY };
+  }
+  if (process.env.OPENAI_API_KEY && currentConfig.llm?.provider !== 'anthropic') {
+    currentConfig.llm = { ...currentConfig.llm, apiKey: process.env.OPENAI_API_KEY };
+  }
+  if (process.env.GROQ_API_KEY && currentConfig.llm?.provider === 'openai-compatible') {
+    currentConfig.llm = { ...currentConfig.llm, apiKey: process.env.GROQ_API_KEY };
   }
 
   // Re-apply any manual overrides (important for test isolation)

@@ -19,6 +19,8 @@ import {
 } from './types.js';
 import { classifyContent } from './classifier.js';
 import { extractByCategory } from './extractors.js';
+import type { LLMClient } from '../llm/client.js';
+import type { LLMConfig } from '../llm/types.js';
 
 /**
  * Cortex Pipeline orchestrator
@@ -26,6 +28,8 @@ import { extractByCategory } from './extractors.js';
 export class CortexPipeline {
   private config: CortexConfig;
   private highlighter?: SemanticHighlighter;
+  private llmClient?: LLMClient;
+  private llmConfig?: LLMConfig;
 
   constructor(config?: Partial<CortexConfig>, highlighter?: SemanticHighlighter) {
     this.config = { ...DEFAULT_CORTEX_CONFIG, ...config };
@@ -34,9 +38,28 @@ export class CortexPipeline {
 
   /**
    * STORE PATH: Classify content and enrich metadata
+   * Async when LLM is available for enhanced classification/extraction
    */
-  processForStore(content: string): CortexPipelineResult {
-    const classification = classifyContent(content);
+  async processForStore(content: string): Promise<CortexPipelineResult> {
+    let classification = classifyContent(content);
+
+    // LLM fallback: if regex confidence is below threshold and LLM is available
+    if (
+      this.llmClient?.isAvailable() &&
+      this.llmConfig?.classifyEnabled &&
+      classification.confidence < (this.llmConfig.classifyConfidenceThreshold ?? 0.5)
+    ) {
+      try {
+        const { llmClassify } = await import('../llm/turbo.js');
+        const llmResult = await llmClassify(this.llmClient, content);
+        if (llmResult) {
+          classification = llmResult;
+        }
+      } catch {
+        // Fallback: keep regex classification
+      }
+    }
+
     const extraction = extractByCategory(content, classification.category);
 
     const enrichedMetadata: Record<string, unknown> = {
@@ -53,6 +76,22 @@ export class CortexPipeline {
 
     // Add extraction fields
     enrichedMetadata.extractedFields = extraction.fields;
+
+    // LLM enrichment: merge additional extracted fields
+    if (
+      this.llmClient?.isAvailable() &&
+      this.llmConfig?.extractEnabled
+    ) {
+      try {
+        const { llmExtract } = await import('../llm/turbo.js');
+        const llmFields = await llmExtract(this.llmClient, content, classification.category);
+        if (llmFields) {
+          enrichedMetadata.llmExtractedFields = llmFields;
+        }
+      } catch {
+        // Fallback: skip LLM extraction
+      }
+    }
 
     return { classification, extraction, enrichedMetadata };
   }
@@ -104,7 +143,24 @@ export class CortexPipeline {
 
     // Step 3: Prune below threshold
     const threshold = this.config.highlightThreshold;
-    const goldSentences = allSentences.filter(s => s.score >= threshold);
+    let goldSentences = allSentences.filter(s => s.score >= threshold);
+
+    // Step 3.5: LLM reranking (runs BEFORE temporal conflict resolution)
+    if (
+      this.llmClient?.isAvailable() &&
+      this.llmConfig?.rerankEnabled &&
+      goldSentences.length > 0
+    ) {
+      try {
+        const { llmRerank } = await import('../llm/turbo.js');
+        const reranked = await llmRerank(this.llmClient, query, goldSentences);
+        if (reranked) {
+          goldSentences = reranked;
+        }
+      } catch {
+        // Fallback: keep original scoring
+      }
+    }
 
     // Step 4: Apply temporal conflict resolution
     const resolved = resolveTemporalConflicts(goldSentences, memories);
@@ -146,6 +202,14 @@ export class CortexPipeline {
    */
   setHighlighter(highlighter: SemanticHighlighter): void {
     this.highlighter = highlighter;
+  }
+
+  /**
+   * Set the LLM client for turbo-enhanced processing
+   */
+  setLLMClient(client: LLMClient, llmConfig: LLMConfig): void {
+    this.llmClient = client;
+    this.llmConfig = llmConfig;
   }
 
   private emptyResult(): LibrarianResult {

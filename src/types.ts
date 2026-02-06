@@ -3,6 +3,8 @@
  * 5-Layer Cognitive Memory Architecture
  */
 
+import type { LLMConfig } from './llm/types.js';
+
 // Memory Layer Enum
 export enum MemoryLayer {
   WORKING = 1,    // Transformer context (managed by LLM)
@@ -203,6 +205,9 @@ export interface TitanConfig {
   proactiveSuggestions: ProactiveSuggestionsConfig;
   crossProject: CrossProjectConfig;
   hybridSearch: HybridSearchConfig;
+
+  // LLM Turbo Layer (v2.1)
+  llm: LLMConfig;
 }
 
 // Pre-compaction context

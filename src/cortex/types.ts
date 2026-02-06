@@ -21,7 +21,7 @@ export type EntityStatus = 'active' | 'historical' | 'contradicted' | 'verified'
 export interface CategoryClassification {
   category: MemoryCategory;
   confidence: number;
-  method: 'regex' | 'semantic' | 'fallback';
+  method: 'regex' | 'semantic' | 'fallback' | 'llm';
   secondaryCategory?: MemoryCategory;
   secondaryConfidence?: number;
 }

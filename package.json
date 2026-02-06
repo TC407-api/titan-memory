@@ -1,6 +1,6 @@
 {
   "name": "titan-memory",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Universal Cognitive Memory Layer - 5-layer AI memory system with intent-aware retrieval, causal graphs, and working memory",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

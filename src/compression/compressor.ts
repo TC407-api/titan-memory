@@ -19,6 +19,7 @@ import {
 import { extractEntities } from './entity-extractor.js';
 import { distillRelationships } from './relationship-distiller.js';
 import { jaccardSimilarity } from '../utils/similarity.js';
+import type { LLMClient } from '../llm/client.js';
 
 /**
  * Default compression options
@@ -38,11 +39,13 @@ export function estimateTokens(text: string): number {
 
 /**
  * Compress memory content into a structured compressed representation
+ * Optionally uses LLM for higher-quality summarization when available.
  */
-export function compressMemory(
+export async function compressMemory(
   content: string,
-  options: CompressionOptions = {}
-): CompressedMemory {
+  options: CompressionOptions = {},
+  llmClient?: LLMClient
+): Promise<CompressedMemory> {
   const opts = { ...DEFAULTS, ...options };
   const originalTokens = estimateTokens(content);
 
@@ -55,14 +58,21 @@ export function compressMemory(
   // Step 3: Extract key facts (before summarization so we can exclude them)
   const keyFacts = extractKeyFacts(content, entities);
 
-  // Step 4: Generate a very short abstract (1-2 sentences, not 30%)
-  // The abstract captures the high-level "what" while entities/relationships/facts
-  // capture the structured details
-  const summary = generateAbstract(content, entities, opts.contextQuery);
+  // Step 4: Generate abstract — LLM-enhanced if available, else extractive
+  let summary: string;
+  if (llmClient?.isAvailable()) {
+    try {
+      const { llmSummarize } = await import('../llm/turbo.js');
+      const llmSummary = await llmSummarize(llmClient, content, opts.contextQuery);
+      summary = llmSummary || generateAbstract(content, entities, opts.contextQuery);
+    } catch {
+      summary = generateAbstract(content, entities, opts.contextQuery);
+    }
+  } else {
+    summary = generateAbstract(content, entities, opts.contextQuery);
+  }
 
   // Step 5: Calculate compressed size using compact wire format
-  // The "compressed tokens" count uses ONLY the structured data (entities, relationships, facts)
-  // The abstract is a reconstruction aid stored separately, not counted toward compression ratio
   const structuredContent = buildCompressedString(entities, relationships, '', keyFacts);
   const compressedTokens = estimateTokens(structuredContent);
 

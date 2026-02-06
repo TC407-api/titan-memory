@@ -13,31 +13,31 @@ describe('Cortex Pipeline', () => {
   });
 
   describe('processForStore', () => {
-    it('should classify and extract metadata', () => {
-      const result = pipeline.processForStore('API rate limit is defined as 1000 requests per hour');
+    it('should classify and extract metadata', async () => {
+      const result = await pipeline.processForStore('API rate limit is defined as 1000 requests per hour');
       expect(result.classification.category).toBe('knowledge');
       expect(result.enrichedMetadata.category).toBe('knowledge');
       expect(result.enrichedMetadata.categoryConfidence).toBeGreaterThan(0);
       expect(result.enrichedMetadata.entityStatus).toBeDefined();
     });
 
-    it('should classify profile content', () => {
-      const result = pipeline.processForStore('I prefer TypeScript over JavaScript');
+    it('should classify profile content', async () => {
+      const result = await pipeline.processForStore('I prefer TypeScript over JavaScript');
       expect(result.classification.category).toBe('profile');
     });
 
-    it('should classify event content', () => {
-      const result = pipeline.processForStore('Deployed to production yesterday');
+    it('should classify event content', async () => {
+      const result = await pipeline.processForStore('Deployed to production yesterday');
       expect(result.classification.category).toBe('event');
     });
 
-    it('should include extraction fields', () => {
-      const result = pipeline.processForStore('Use GET /api/users to list all users');
+    it('should include extraction fields', async () => {
+      const result = await pipeline.processForStore('Use GET /api/users to list all users');
       expect(result.enrichedMetadata.extractedFields).toBeDefined();
     });
 
-    it('should include secondary category when confident', () => {
-      const result = pipeline.processForStore('We decided to use API version 2.0 because of better documentation');
+    it('should include secondary category when confident', async () => {
+      const result = await pipeline.processForStore('We decided to use API version 2.0 because of better documentation');
       // May or may not have secondary depending on classification
       expect(result.classification).toHaveProperty('category');
     });

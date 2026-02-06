@@ -187,11 +187,13 @@ export const ToolSchemas = {
       .describe('Output format'),
   }),
 
-  // v2.0 Benchmark schema
+  // v2.0 Benchmark schema (v2.1: llmMode added)
   titan_benchmark: z.object({
     categories: z.array(z.enum(['retrieval', 'latency', 'token-efficiency', 'accuracy'])).optional()
       .describe('Categories to run (default: all)'),
     verbose: z.boolean().default(false).optional().describe('Show detailed output'),
+    llmMode: z.boolean().default(false).optional()
+      .describe('v2.1: Temporarily enable LLM Turbo Layer for this benchmark run'),
   }),
 };
 
@@ -584,6 +586,7 @@ export const ToolDefinitions = [
           description: 'Categories to run (default: all)',
         },
         verbose: { type: 'boolean', description: 'Show detailed output (default: false)' },
+        llmMode: { type: 'boolean', description: 'v2.1: Temporarily enable LLM Turbo Layer for this benchmark run (default: false)' },
       },
       required: [],
     },
@@ -928,12 +931,35 @@ export class ToolHandler {
 
         case 'titan_benchmark': {
           const parsed = ToolSchemas.titan_benchmark.parse(args);
-          // Dynamic import to avoid circular dependencies
-          const { runBenchmarkSuite } = await import('../benchmarks/index.js');
-          result = await runBenchmarkSuite({
-            categories: parsed.categories as ('retrieval' | 'latency' | 'token-efficiency' | 'accuracy')[] | undefined,
-            verbose: parsed.verbose,
-          });
+
+          // v2.1: Temporarily enable LLM config for benchmark if llmMode requested
+          let configRestorer: (() => void) | undefined;
+          if (parsed.llmMode) {
+            const { updateConfig, getConfig } = await import('../utils/config.js');
+            const prevLlm = { ...getConfig().llm };
+            updateConfig({
+              llm: {
+                ...prevLlm,
+                enabled: true,
+                classifyEnabled: true,
+                extractEnabled: true,
+                rerankEnabled: true,
+                summarizeEnabled: false,
+              },
+            });
+            configRestorer = () => updateConfig({ llm: prevLlm });
+          }
+
+          try {
+            // Dynamic import to avoid circular dependencies
+            const { runBenchmarkSuite } = await import('../benchmarks/index.js');
+            result = await runBenchmarkSuite({
+              categories: parsed.categories as ('retrieval' | 'latency' | 'token-efficiency' | 'accuracy')[] | undefined,
+              verbose: parsed.verbose,
+            });
+          } finally {
+            configRestorer?.();
+          }
           break;
         }
 
