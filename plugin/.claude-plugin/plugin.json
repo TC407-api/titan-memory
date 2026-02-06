@@ -1,0 +1,19 @@
+{
+  "name": "titan-memory",
+  "version": "2.1.0",
+  "description": "5-layer cognitive memory for Claude Code — surprise filtering, semantic highlighting, Cortex classification, adaptive decay, cross-project learning. 30 MCP tools. 90.7% benchmark accuracy.",
+  "author": {
+    "name": "TC407",
+    "url": "https://github.com/TC407-api"
+  },
+  "repository": "https://github.com/TC407-api/Titan-Memory",
+  "license": "Apache-2.0",
+  "keywords": [
+    "memory",
+    "cognitive",
+    "mcp",
+    "safety",
+    "sustainability",
+    "ai-memory"
+  ]
+}

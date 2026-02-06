@@ -43,3 +43,10 @@ highlight-env/
 
 # Windows null device artifact
 nul
+
+# Plugin build artifacts (built by scripts/build-plugin.js)
+plugin/dist/
+plugin/node_modules/
+plugin/bin/
+plugin/package.json
+plugin/package-lock.json

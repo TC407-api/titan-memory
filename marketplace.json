@@ -1,0 +1,14 @@
+{
+  "name": "TC407-api",
+  "owner": {
+    "name": "TC407"
+  },
+  "plugins": [
+    {
+      "name": "titan-memory",
+      "version": "2.1.0",
+      "source": "./plugin",
+      "description": "5-layer cognitive memory with 30 MCP tools, 90.7% benchmark accuracy"
+    }
+  ]
+}

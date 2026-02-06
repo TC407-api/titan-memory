@@ -1,0 +1,18 @@
+{
+  "name": "TC407-api",
+  "owner": {
+    "name": "TC407"
+  },
+  "metadata": {
+    "description": "Titan Memory — Persistent Memory from the Gods",
+    "homepage": "https://github.com/TC407-api/Titan-Memory"
+  },
+  "plugins": [
+    {
+      "name": "titan-memory",
+      "version": "2.1.0",
+      "source": ".",
+      "description": "5-layer cognitive memory with 30 MCP tools, 90.7% benchmark accuracy"
+    }
+  ]
+}
