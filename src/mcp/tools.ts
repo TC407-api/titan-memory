@@ -172,6 +172,21 @@ export const ToolSchemas = {
     content: z.string().optional().describe('Content for set/append actions'),
   }),
 
+  // v2.0 Compression schemas
+  titan_compress: z.object({
+    memoryId: z.string().describe('Memory ID to compress'),
+    targetRatio: z.number().optional().describe('Target compression ratio (default: 20)'),
+    contextQuery: z.string().optional().describe('Optional query to bias compression toward relevant content'),
+  }),
+
+  titan_expand: z.object({
+    compressed: z.string().describe('Compressed memory JSON string (output from titan_compress)'),
+    verbosity: z.enum(['minimal', 'normal', 'detailed']).default('normal').optional()
+      .describe('Output verbosity level'),
+    format: z.enum(['prose', 'structured', 'bullet']).default('prose').optional()
+      .describe('Output format'),
+  }),
+
   // v2.0 Benchmark schema
   titan_benchmark: z.object({
     categories: z.array(z.enum(['retrieval', 'latency', 'token-efficiency', 'accuracy'])).optional()
@@ -529,6 +544,33 @@ export const ToolDefinitions = [
       required: ['action'],
     },
   },
+  // v2.0 Compression tools
+  {
+    name: 'titan_compress',
+    description: 'v2.0: Compress a memory into entities, relationships, summary, and key facts. Returns structured compressed representation with compression ratio and fidelity score.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        memoryId: { type: 'string', description: 'Memory ID to compress' },
+        targetRatio: { type: 'number', description: 'Target compression ratio (default: 20)' },
+        contextQuery: { type: 'string', description: 'Optional query to bias compression toward relevant content' },
+      },
+      required: ['memoryId'],
+    },
+  },
+  {
+    name: 'titan_expand',
+    description: 'v2.0: Expand a compressed memory back into readable text. Supports prose, structured, and bullet formats with configurable verbosity.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        compressed: { type: 'string', description: 'Compressed memory JSON string (output from titan_compress)' },
+        verbosity: { type: 'string', enum: ['minimal', 'normal', 'detailed'], description: 'Output verbosity level' },
+        format: { type: 'string', enum: ['prose', 'structured', 'bullet'], description: 'Output format' },
+      },
+      required: ['compressed'],
+    },
+  },
   // v2.0 Benchmark tool
   {
     name: 'titan_benchmark',
@@ -861,6 +903,26 @@ export class ToolHandler {
               result = { success: true };
               break;
           }
+          break;
+        }
+
+        // v2.0 Compression handlers
+        case 'titan_compress': {
+          const parsed = ToolSchemas.titan_compress.parse(args);
+          result = await titan.compress(parsed.memoryId, {
+            targetRatio: parsed.targetRatio,
+            contextQuery: parsed.contextQuery,
+          });
+          break;
+        }
+
+        case 'titan_expand': {
+          const parsed = ToolSchemas.titan_expand.parse(args);
+          const compressed = JSON.parse(parsed.compressed);
+          result = await titan.expand(compressed, {
+            verbosity: parsed.verbosity as 'minimal' | 'normal' | 'detailed' | undefined,
+            format: parsed.format as 'prose' | 'structured' | 'bullet' | undefined,
+          });
           break;
         }
 

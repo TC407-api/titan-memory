@@ -92,7 +92,10 @@ export class ZillizClient implements IVectorStorage {
         body: JSON.stringify({ collectionName: this.collection }),
       });
 
-      if (!response.ok) {
+      // Zilliz REST API v2 returns HTTP 200 even for errors,
+      // with code != 0 in JSON body when collection doesn't exist
+      const data = await response.json() as { code: number };
+      if (!response.ok || data.code !== 0) {
         // Collection doesn't exist, create it
         await this.createCollection();
       }
@@ -109,8 +112,20 @@ export class ZillizClient implements IVectorStorage {
       // Create collection with hybrid search schema (dense + sparse vectors)
       await this.createHybridCollection();
     } else {
-      // Create simple collection with dense vectors only
-      await fetch(`${this.uri}/v2/vectordb/collections/create`, {
+      // Create collection with explicit schema (VarChar id for UUID support)
+      const schema = {
+        autoId: false,
+        enableDynamicField: true,
+        fields: [
+          { fieldName: 'id', dataType: 'VarChar', isPrimary: true, elementTypeParams: { max_length: '64' } },
+          { fieldName: 'content', dataType: 'VarChar', elementTypeParams: { max_length: '8000' } },
+          { fieldName: 'embedding', dataType: 'FloatVector', elementTypeParams: { dim: String(this.dimension) } },
+          { fieldName: 'timestamp', dataType: 'VarChar', elementTypeParams: { max_length: '64' } },
+          { fieldName: 'metadata', dataType: 'VarChar', elementTypeParams: { max_length: '16000' } },
+        ],
+      };
+
+      const resp = await fetch(`${this.uri}/v2/vectordb/collections/create`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.token}`,
@@ -118,11 +133,40 @@ export class ZillizClient implements IVectorStorage {
         },
         body: JSON.stringify({
           collectionName: this.collection,
-          dimension: this.dimension,
-          metricType: this.metricType,
-          primaryField: 'id',
-          vectorField: 'embedding',
+          schema,
         }),
+      });
+      const data = await resp.json() as { code: number; message?: string };
+      if (data.code !== 0) {
+        console.warn(`Failed to create collection ${this.collection}: ${data.message}`);
+      }
+
+      // Create index for the embedding field
+      await fetch(`${this.uri}/v2/vectordb/indexes/create`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          collectionName: this.collection,
+          indexParams: [{
+            fieldName: 'embedding',
+            indexName: 'embedding_idx',
+            indexType: 'AUTOINDEX',
+            metricType: this.metricType,
+          }],
+        }),
+      });
+
+      // Load collection into memory for searching
+      await fetch(`${this.uri}/v2/vectordb/collections/load`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ collectionName: this.collection }),
       });
     }
   }
@@ -233,7 +277,7 @@ export class ZillizClient implements IVectorStorage {
   async insert(entry: MemoryEntry): Promise<void> {
     const embedding = await this.embeddingGenerator.generateEmbedding(entry.content);
 
-    await fetch(`${this.uri}/v2/vectordb/entities/insert`, {
+    const resp = await fetch(`${this.uri}/v2/vectordb/entities/insert`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
@@ -250,6 +294,10 @@ export class ZillizClient implements IVectorStorage {
         }],
       }),
     });
+    const data = await resp.json() as { code: number; message?: string };
+    if (data.code !== 0) {
+      console.warn(`Zilliz insert failed for ${entry.id}: ${data.message}`);
+    }
   }
 
   async search(query: string, limit: number): Promise<VectorSearchResult[]> {
@@ -263,19 +311,29 @@ export class ZillizClient implements IVectorStorage {
       },
       body: JSON.stringify({
         collectionName: this.collection,
-        vector: embedding,
+        data: [embedding],
+        annsField: 'embedding',
         limit,
         outputFields: ['id', 'content', 'timestamp', 'metadata'],
+        consistencyLevel: 'Strong',
       }),
     });
 
-    const data = await response.json() as { results?: Array<Record<string, unknown>> };
-    return (data.results || []).map((r: Record<string, unknown>) => ({
-      id: r.id as string,
-      content: r.content as string,
-      score: r.score as number,
-      metadata: JSON.parse(r.metadata as string),
-    }));
+    const data = await response.json() as { code?: number; data?: Array<Record<string, unknown>>; results?: Array<Record<string, unknown>> };
+    // Zilliz v2 REST API returns search results in 'data' array
+    const results = data.data || data.results || [];
+    return results.map((r: Record<string, unknown>) => {
+      const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata) : (r.metadata || {});
+      if (r.timestamp && !meta.timestamp) {
+        meta.timestamp = r.timestamp;
+      }
+      return {
+        id: r.id as string,
+        content: r.content as string,
+        score: (r.distance ?? r.score ?? 0) as number,
+        metadata: meta,
+      };
+    });
   }
 
   /**
@@ -342,6 +400,9 @@ export class ZillizClient implements IVectorStorage {
       outputFields: ['id', 'content', 'timestamp', 'metadata'],
     };
 
+    // Strong consistency ensures recently inserted data is searchable
+    (searchRequest as Record<string, unknown>).consistencyLevel = 'Strong';
+
     // Add filter if provided
     if (options.filter) {
       (searchRequest as Record<string, unknown>).filter = options.filter;
@@ -356,13 +417,20 @@ export class ZillizClient implements IVectorStorage {
       body: JSON.stringify(searchRequest),
     });
 
-    const data = await response.json() as { results?: Array<Record<string, unknown>> };
-    return (data.results || []).map((r: Record<string, unknown>) => ({
-      id: r.id as string,
-      content: r.content as string,
-      score: r.score as number,
-      metadata: JSON.parse(r.metadata as string),
-    }));
+    const data = await response.json() as { code?: number; data?: Array<Record<string, unknown>>; results?: Array<Record<string, unknown>> };
+    const results = data.data || data.results || [];
+    return results.map((r: Record<string, unknown>) => {
+      const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata) : (r.metadata || {});
+      if (r.timestamp && !meta.timestamp) {
+        meta.timestamp = r.timestamp;
+      }
+      return {
+        id: r.id as string,
+        content: r.content as string,
+        score: (r.distance ?? r.score ?? 0) as number,
+        metadata: meta,
+      };
+    });
   }
 
   async get(id: string): Promise<VectorSearchResult | null> {
@@ -379,14 +447,19 @@ export class ZillizClient implements IVectorStorage {
       }),
     });
 
-    const data = await response.json() as { results?: Array<Record<string, unknown>> };
-    if (data.results && data.results.length > 0) {
-      const r = data.results[0];
+    const data = await response.json() as { code?: number; data?: Array<Record<string, unknown>>; results?: Array<Record<string, unknown>> };
+    const results = data.data || data.results || [];
+    if (results.length > 0) {
+      const r = results[0];
+      const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata) : (r.metadata || {});
+      if (r.timestamp && !meta.timestamp) {
+        meta.timestamp = r.timestamp;
+      }
       return {
         id: r.id as string,
         content: r.content as string,
         score: 1.0,
-        metadata: JSON.parse(r.metadata as string),
+        metadata: meta,
       };
     }
     return null;
@@ -404,16 +477,20 @@ export class ZillizClient implements IVectorStorage {
         filter: '',
         limit,
         outputFields: ['id', 'content', 'timestamp', 'metadata'],
+        consistencyLevel: 'Strong',
       }),
     });
 
-    const data = await response.json() as { results?: Array<Record<string, unknown>> };
-    return (data.results || []).map((r: Record<string, unknown>) => ({
-      id: r.id as string,
-      content: r.content as string,
-      score: 1.0,
-      metadata: JSON.parse(r.metadata as string),
-    }));
+    const data = await response.json() as { code?: number; data?: Array<Record<string, unknown>>; results?: Array<Record<string, unknown>> };
+    const results = data.data || data.results || [];
+    return results.map((r: Record<string, unknown>) => {
+      const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata) : (r.metadata || {});
+      // Inject top-level timestamp into metadata so layers can access it
+      if (r.timestamp && !meta.timestamp) {
+        meta.timestamp = r.timestamp;
+      }
+      return { id: r.id as string, content: r.content as string, score: 1.0, metadata: meta };
+    });
   }
 
   async delete(id: string): Promise<boolean> {

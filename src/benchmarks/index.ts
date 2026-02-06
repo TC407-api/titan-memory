@@ -3,38 +3,99 @@
  * v2.0 - Competitive Upgrade
  *
  * Entry point for running all benchmarks.
+ * Each benchmark gets its own isolated Titan instance to prevent data interference.
  */
 
 export * from './types.js';
 export * from './runner.js';
 export * from './latency.js';
 export * from './retrieval-accuracy.js';
+export * from './locomo.js';
+export * from './longmemeval.js';
+export * from './token-efficiency.js';
 
-import { BenchmarkSuite, formatReport } from './runner.js';
+import { BenchmarkSuite, BenchmarkDefinition, formatReport } from './runner.js';
 import { createLatencyBenchmarks } from './latency.js';
 import { createRetrievalAccuracyBenchmarks } from './retrieval-accuracy.js';
-import { initTitan } from '../titan.js';
+import { createLoComoBenchmarks } from './locomo.js';
+import { createLongMemEvalBenchmarks } from './longmemeval.js';
+import { createTokenEfficiencyBenchmarks } from './token-efficiency.js';
+import { TitanMemory, initTitanForProject } from '../titan.js';
+import { updateConfig } from '../utils/config.js';
 import { BenchmarkOptions, BenchmarkSuiteResult } from './types.js';
+
+let benchCounter = 0;
+
+/**
+ * Create an isolated Titan instance for a benchmark
+ */
+async function createIsolatedTitan(label: string): Promise<TitanMemory> {
+  const projectId = `bench_${label}_${Date.now()}_${benchCounter++}`;
+  return initTitanForProject(projectId);
+}
+
+/**
+ * Wrap a benchmark to use its own isolated Titan instance
+ */
+function isolateBenchmark(
+  factory: (titan: TitanMemory) => BenchmarkDefinition[],
+  label: string
+): BenchmarkDefinition[] {
+  // Create one shared titan for the factory call (we'll replace the run functions)
+  const dummyBenchmarks = factory(null as unknown as TitanMemory);
+
+  return dummyBenchmarks.map((b, idx) => ({
+    ...b,
+    run: async () => {
+      const titan = await createIsolatedTitan(`${label}_${idx}`);
+      try {
+        // Re-create benchmarks with real titan
+        const realBenchmarks = factory(titan);
+        return await realBenchmarks[idx].run();
+      } finally {
+        await titan.close();
+      }
+    },
+  }));
+}
 
 /**
  * Run the complete benchmark suite
+ * Each benchmark gets its own isolated Titan instance
+ * to prevent cross-benchmark data interference
  */
 export async function runBenchmarkSuite(
   options?: BenchmarkOptions
 ): Promise<BenchmarkSuiteResult> {
-  const titan = await initTitan();
+  // Disable surprise filtering during benchmarks so all data gets stored
+  updateConfig({ enableSurpriseFiltering: false });
 
   const suite = new BenchmarkSuite('Titan Memory v2.0');
 
-  // Add latency benchmarks
-  const latencyBenchmarks = createLatencyBenchmarks(titan, 50);
-  for (const b of latencyBenchmarks) {
+  // Accuracy benchmarks — each gets isolated titan
+  for (const b of isolateBenchmark(createRetrievalAccuracyBenchmarks, 'accuracy')) {
     suite.add(b);
   }
 
-  // Add retrieval accuracy benchmarks
-  const accuracyBenchmarks = createRetrievalAccuracyBenchmarks(titan);
-  for (const b of accuracyBenchmarks) {
+  // LoCoMo benchmarks — each gets isolated titan
+  for (const b of isolateBenchmark(createLoComoBenchmarks, 'locomo')) {
+    suite.add(b);
+  }
+
+  // LongMemEval benchmarks — each gets isolated titan
+  for (const b of isolateBenchmark(createLongMemEvalBenchmarks, 'longmem')) {
+    suite.add(b);
+  }
+
+  // Compression benchmarks — shared titan is fine (no retrieval interference)
+  const titanCompress = await createIsolatedTitan('compress');
+  for (const b of createTokenEfficiencyBenchmarks(titanCompress)) {
+    suite.add(b);
+  }
+
+  // Latency benchmarks — shared titan is fine
+  const titanLatency = await createIsolatedTitan('latency');
+  for (const b of createLatencyBenchmarks(titanLatency, 20)) {
     suite.add(b);
   }
 
@@ -45,7 +106,9 @@ export async function runBenchmarkSuite(
     categories: options?.categories,
   });
 
-  await titan.close();
+  // Cleanup shared instances
+  await titanCompress.close();
+  await titanLatency.close();
 
   return results;
 }

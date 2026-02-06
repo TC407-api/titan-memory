@@ -162,7 +162,7 @@ export interface CortexConfig {
 /**
  * Default Cortex configuration
  */
-export const DEFAULT_CATBRAIN_CONFIG: CortexConfig = {
+export const DEFAULT_CORTEX_CONFIG: CortexConfig = {
   enabled: false,
   retrieveCount: 50,
   highlightThreshold: 0.8,

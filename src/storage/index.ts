@@ -16,9 +16,10 @@ export {
   DefaultEmbeddingGenerator,
 } from './zilliz-client.js';
 
-// MIRAS Enhancement: Embedding generators
+// MIRAS Enhancement: Embedding generators + reranker
 export {
   VoyageEmbeddingGenerator,
+  VoyageReranker,
   LocalEmbeddingGenerator,
   CachedEmbeddingGenerator,
   createEmbeddingGenerator,
@@ -29,6 +30,8 @@ export {
 
 export type {
   VoyageEmbeddingConfig,
+  VoyageRerankerConfig,
+  RerankResult,
   LocalEmbeddingConfig,
   CacheConfig,
 } from './embeddings/index.js';

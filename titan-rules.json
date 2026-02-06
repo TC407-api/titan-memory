@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "description": "CatBrain Bedrock Rules - Rights vs Wrongs",
+  "description": "Cortex Bedrock Rules - Rights vs Wrongs",
   "rules": [
     {
       "id": "custom-protect-verified",

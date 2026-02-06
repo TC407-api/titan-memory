@@ -9,7 +9,7 @@ import { BaseMemoryLayer } from './base.js';
 import { MemoryEntry, MemoryLayer, QueryOptions, QueryResult } from '../types.js';
 import { calculateSurprise, calculateMomentum, calculateDecay } from '../utils/surprise.js';
 import { getConfig, getProjectCollectionName } from '../utils/config.js';
-import { IVectorStorage, ZillizClient, createEmbeddingGenerator } from '../storage/index.js';
+import { IVectorStorage, ZillizClient, VoyageReranker, createEmbeddingGenerator } from '../storage/index.js';
 
 export class LongTermMemoryLayer extends BaseMemoryLayer {
   // Use circular buffer for O(1) momentum calculation instead of array shift O(n)
@@ -19,6 +19,7 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
   private surpriseCount: number = 0;
   private memoryCache: Map<string, MemoryEntry> = new Map();
   private vectorStorage: IVectorStorage | null = null;
+  private reranker: VoyageReranker | null = null;
 
   constructor(projectId?: string, vectorStorage?: IVectorStorage) {
     super(MemoryLayer.LONG_TERM, projectId);
@@ -64,13 +65,23 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
       await this.vectorStorage.initialize();
     }
 
+    // Initialize reranker if Voyage API key is available
+    const voyageKey = config.embedding?.apiKey || process.env.VOYAGE_API_KEY || '';
+    if (voyageKey && !config.offlineMode) {
+      try {
+        this.reranker = new VoyageReranker({ apiKey: voyageKey });
+      } catch {
+        // Reranker is optional — continue without it
+      }
+    }
+
     this.initialized = true;
   }
 
   /**
    * Store with surprise-based filtering
    */
-  async store(entry: Omit<MemoryEntry, 'id' | 'layer'>): Promise<MemoryEntry> {
+  async store(entry: Omit<MemoryEntry, 'id' | 'layer'> & { id?: string }): Promise<MemoryEntry> {
     const config = getConfig();
 
     // Get recent memories for surprise calculation
@@ -107,7 +118,7 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
       };
     }
 
-    const id = uuidv4();
+    const id = entry.id || uuidv4();
     const momentum = calculateMomentum(this.getRecentSurprisesArray());
 
     const memoryEntry: MemoryEntry = {
@@ -168,17 +179,49 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
         results = await this.vectorStorage.search(queryText, limit * 2);
       }
 
-      memories = results.map(r => ({
-        id: r.id,
-        content: r.content,
-        layer: MemoryLayer.LONG_TERM,
-        timestamp: new Date(r.metadata.timestamp as string),
-        metadata: r.metadata as MemoryEntry['metadata'],
-      }));
+      // Rerank using Voyage AI for accuracy beyond raw vector similarity
+      if (this.reranker && results.length > 1) {
+        try {
+          const reranked = await this.reranker.rerank(
+            queryText,
+            results.map(r => r.content),
+          );
+          // Rebuild results in reranked order with reranker scores
+          const originalResults = [...results];
+          results = reranked.map(rr => ({
+            ...originalResults[rr.index],
+            score: rr.relevance_score,
+          }));
+        } catch {
+          // Reranker failure is non-blocking — use original vector search order
+        }
+      }
+
+      memories = results.map(r => {
+        // Timestamp can be in metadata or as a separate field; default to now if missing
+        const ts = r.metadata.timestamp || r.metadata.lastAccessed;
+        const timestamp = ts ? new Date(ts as string) : new Date();
+        return {
+          id: r.id,
+          content: r.content,
+          layer: MemoryLayer.LONG_TERM,
+          timestamp: isNaN(timestamp.getTime()) ? new Date() : timestamp,
+          metadata: {
+            ...r.metadata as MemoryEntry['metadata'],
+            searchScore: r.score, // Reranker score when available, else Zilliz score
+          },
+        };
+      });
     } else {
       // Fallback to cache
       memories = [...this.memoryCache.values()];
     }
+
+    // Compute timestamp range for recency tiebreaker
+    const timestamps = memories.map(m => m.timestamp.getTime());
+    const minTs = Math.min(...timestamps);
+    const maxTs = Math.max(...timestamps);
+    const tsRange = Math.max(1, maxTs - minTs);
 
     // Apply decay filtering and scoring
     const scoredMemories = memories
@@ -189,9 +232,20 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
           : createdAt;
         const decay = calculateDecay(createdAt, lastAccessed, config.decayHalfLife);
 
+        // Use reranker/Zilliz similarity score when available,
+        // fall back to surpriseScore for cache-only results
+        const relevanceScore = (m.metadata.searchScore as number)
+          ?? (m.metadata.surpriseScore as number)
+          ?? 0.5;
+
+        // Recency tiebreaker: newer memories get up to 20% bonus
+        // Helps knowledge-updates where new info should rank above old contradicting info
+        const normalizedRecency = (createdAt.getTime() - minTs) / tsRange;
+        const recencyTiebreak = normalizedRecency * 0.20;
+
         return {
           memory: m,
-          effectiveScore: (m.metadata.surpriseScore as number || 0.5) * decay,
+          effectiveScore: relevanceScore * decay + recencyTiebreak,
           decay,
         };
       })
@@ -237,11 +291,13 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
     if (this.vectorStorage) {
       const result = await this.vectorStorage.get(id);
       if (result) {
+        const ts = result.metadata.timestamp || result.metadata.lastAccessed;
+        const rawTs = ts ? new Date(ts as string) : new Date();
         const memory: MemoryEntry = {
           id: result.id,
           content: result.content,
           layer: MemoryLayer.LONG_TERM,
-          timestamp: new Date(result.metadata.timestamp as string),
+          timestamp: isNaN(rawTs.getTime()) ? new Date() : rawTs,
           metadata: result.metadata as MemoryEntry['metadata'],
         };
         this.memoryCache.set(id, memory);
@@ -275,13 +331,17 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
   private async getRecentMemories(limit: number): Promise<MemoryEntry[]> {
     if (this.vectorStorage) {
       const results = await this.vectorStorage.getRecent(limit);
-      return results.map(r => ({
-        id: r.id,
-        content: r.content,
-        layer: MemoryLayer.LONG_TERM,
-        timestamp: new Date(r.metadata.timestamp as string),
-        metadata: r.metadata as MemoryEntry['metadata'],
-      }));
+      return results.map(r => {
+        const ts = r.metadata.timestamp || r.metadata.lastAccessed;
+        const timestamp = ts ? new Date(ts as string) : new Date();
+        return {
+          id: r.id,
+          content: r.content,
+          layer: MemoryLayer.LONG_TERM,
+          timestamp: isNaN(timestamp.getTime()) ? new Date() : timestamp,
+          metadata: r.metadata as MemoryEntry['metadata'],
+        };
+      });
     }
 
     return [...this.memoryCache.values()]
@@ -349,6 +409,7 @@ export class LongTermMemoryLayer extends BaseMemoryLayer {
     if (this.vectorStorage) {
       await this.vectorStorage.close();
     }
+    this.reranker = null;
     this.initialized = false;
   }
 }

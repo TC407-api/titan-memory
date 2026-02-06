@@ -30,7 +30,16 @@ export class VoyageEmbeddingGenerator implements IEmbeddingGenerator {
   private readonly baseUrl = 'https://api.voyageai.com/v1';
 
   constructor(config?: VoyageEmbeddingConfig) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    // Filter out undefined values so they don't override defaults (especially env var fallback)
+    const cleanConfig: Partial<VoyageEmbeddingConfig> = {};
+    if (config) {
+      for (const [key, value] of Object.entries(config)) {
+        if (value !== undefined) {
+          (cleanConfig as Record<string, unknown>)[key] = value;
+        }
+      }
+    }
+    this.config = { ...DEFAULT_CONFIG, ...cleanConfig };
 
     if (!this.config.apiKey) {
       throw new Error('Voyage API key is required. Set VOYAGE_API_KEY environment variable or pass apiKey in config.');

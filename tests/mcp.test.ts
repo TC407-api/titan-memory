@@ -5,8 +5,8 @@
 import { ToolHandler, ToolDefinitions } from '../src/mcp/tools';
 
 describe('MCP Tool Definitions', () => {
-  it('should have 28 tools defined', () => {
-    expect(ToolDefinitions).toHaveLength(28);
+  it('should have 30 tools defined', () => {
+    expect(ToolDefinitions).toHaveLength(30);
   });
 
   it('should have correct tool names', () => {
@@ -43,6 +43,9 @@ describe('MCP Tool Definitions', () => {
     expect(toolNames).toContain('titan_focus_clear');
     expect(toolNames).toContain('titan_focus_remove');
     expect(toolNames).toContain('titan_scratchpad');
+    // v2.0 tools - Compression
+    expect(toolNames).toContain('titan_compress');
+    expect(toolNames).toContain('titan_expand');
     // v2.0 tools - Benchmark
     expect(toolNames).toContain('titan_benchmark');
   });

@@ -123,8 +123,8 @@ export class SemanticMemoryLayer extends BaseMemoryLayer {
     }
   }
 
-  async store(entry: Omit<MemoryEntry, 'id' | 'layer'>): Promise<MemoryEntry> {
-    const id = uuidv4();
+  async store(entry: Omit<MemoryEntry, 'id' | 'layer'> & { id?: string }): Promise<MemoryEntry> {
+    const id = entry.id || uuidv4();
     const importance = scoreImportance(entry.content);
 
     // Determine update frequency based on importance

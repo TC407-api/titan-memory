@@ -4,7 +4,7 @@
  * Can return "Permission Denied: Semantic Conflict" even with --dangerously-skip-permissions
  */
 
-import { GuardrailResult, CortexConfig, DEFAULT_CATBRAIN_CONFIG } from './types.js';
+import { GuardrailResult, CortexConfig, DEFAULT_CORTEX_CONFIG } from './types.js';
 import { BedrockRulesManager } from './bedrock-rules.js';
 
 /**
@@ -15,7 +15,7 @@ export class IntentGuardrails {
   private enabled: boolean;
 
   constructor(config?: Partial<CortexConfig>) {
-    const cfg = { ...DEFAULT_CATBRAIN_CONFIG, ...config };
+    const cfg = { ...DEFAULT_CORTEX_CONFIG, ...config };
     this.enabled = cfg.enableGuardrails;
     this.bedrockRules = new BedrockRulesManager(cfg.bedrockRulesPath);
 

@@ -15,7 +15,7 @@ import {
   GoldSentence,
   LibrarianResult,
   CortexConfig,
-  DEFAULT_CATBRAIN_CONFIG,
+  DEFAULT_CORTEX_CONFIG,
 } from './types.js';
 import { classifyContent } from './classifier.js';
 import { extractByCategory } from './extractors.js';
@@ -28,7 +28,7 @@ export class CortexPipeline {
   private highlighter?: SemanticHighlighter;
 
   constructor(config?: Partial<CortexConfig>, highlighter?: SemanticHighlighter) {
-    this.config = { ...DEFAULT_CATBRAIN_CONFIG, ...config };
+    this.config = { ...DEFAULT_CORTEX_CONFIG, ...config };
     this.highlighter = highlighter;
   }
 

@@ -6,6 +6,7 @@
  * Behavioral Validation, and Adaptive Memory systems.
  */
 
+import { v4 as uuidv4 } from 'uuid';
 import {
   MemoryEntry,
   MemoryLayer,
@@ -405,9 +406,15 @@ export class TitanMemory {
     const intent = this.intentDetector.detect(content);
     const searchConfig = getSearchConfig(intent);
 
+    // Always include LONG_TERM layer for Zilliz vector search
+    // Local layers use weak LSH matching; LONG_TERM uses real Voyage embeddings
+    const layers = searchConfig.layers.includes(MemoryLayer.LONG_TERM)
+      ? searchConfig.layers
+      : [...searchConfig.layers, MemoryLayer.LONG_TERM];
+
     // Convert intent to gating decision
     return {
-      layers: searchConfig.layers,
+      layers,
       priority: intent.priorityLayer,
       reason: intent.explanation,
     };
@@ -431,10 +438,10 @@ export class TitanMemory {
       };
     }
 
-    // Factual definitions
+    // Factual definitions - always include LONG_TERM for Zilliz vector indexing
     if (/\b(?:is defined as|means|refers to|is a|is the)\b/.test(lower)) {
       return {
-        layers: [MemoryLayer.FACTUAL],
+        layers: [MemoryLayer.FACTUAL, MemoryLayer.LONG_TERM],
         priority: MemoryLayer.FACTUAL,
         reason: 'Factual definition',
       };
@@ -448,7 +455,7 @@ export class TitanMemory {
 
     if (hasTemporalContext || isSignificantEvent || hasEventVerb) {
       return {
-        layers: [MemoryLayer.EPISODIC],
+        layers: [MemoryLayer.EPISODIC, MemoryLayer.LONG_TERM],
         priority: MemoryLayer.EPISODIC,
         reason: 'Event/episode with temporal or significance markers',
       };
@@ -504,7 +511,11 @@ export class TitanMemory {
     const inheritance = await this.worldModel.getContextInheritance(activeContext);
     const inheritedTags = inheritance?.inheritedTags || [];
 
+    // Generate a shared ID so all layers use the same ID for this memory
+    const sharedId = uuidv4();
+
     const entry = {
+      id: sharedId,
       content,
       timestamp: new Date(),
       metadata: {
@@ -614,11 +625,30 @@ export class TitanMemory {
       throw new Error(`Invalid layer: ${layer}`);
     }
 
-    return targetLayer.store({
+    const result = await targetLayer.store({
       content,
       timestamp: new Date(),
       metadata: metadata || {},
     });
+
+    // Mirror to LONG_TERM for Zilliz-powered retrieval (local layers have weak search)
+    if (layer !== MemoryLayer.LONG_TERM) {
+      const longTermLayer = this.layers.get(MemoryLayer.LONG_TERM);
+      if (longTermLayer) {
+        try {
+          await longTermLayer.store({
+            id: result.id,
+            content,
+            timestamp: new Date(),
+            metadata: { ...(metadata || {}), originalLayer: layer },
+          });
+        } catch {
+          // Mirror failure is non-blocking
+        }
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -648,6 +678,13 @@ export class TitanMemory {
 
     // Fuse results with priority weighting
     let fusedMemories = this.fuseResults(results, decision.priority, limit);
+
+    // Restore originalLayer for memories mirrored to LONG_TERM via addToLayer
+    for (const mem of fusedMemories) {
+      if (mem.metadata?.originalLayer != null) {
+        mem.layer = mem.metadata.originalLayer as MemoryLayer;
+      }
+    }
 
     // FR-1: Apply utility weighting to results
     const baseScores = fusedMemories.map((_, idx) => 1.0 - (idx * 0.05)); // Position-based scores
@@ -747,12 +784,19 @@ export class TitanMemory {
     const allMemories: Array<{ memory: MemoryEntry; score: number }> = [];
 
     for (const result of results) {
-      const layerWeight = result.layer === priorityLayer ? 1.5 : 1.0;
-      const positionDecay = 0.9; // Earlier results get higher scores
+      // LONG_TERM layer uses Voyage embeddings (real semantic search) — always boost it
+      const isPriority = result.layer === priorityLayer;
+      const isLongTerm = result.layer === MemoryLayer.LONG_TERM;
+      const layerWeight = (isPriority || isLongTerm) ? 1.5 : 1.0;
+      const positionDecay = 0.9; // Fallback for layers without searchScore
 
       result.memories.forEach((memory, idx) => {
-        const positionScore = Math.pow(positionDecay, idx);
-        const score = layerWeight * positionScore;
+        // Use effectiveScore (includes recency tiebreak) when available,
+        // fall back to searchScore (raw reranker/Zilliz), then position-based for local layers
+        const effectiveScore = memory.metadata?.effectiveScore as number | undefined;
+        const searchScore = memory.metadata?.searchScore as number | undefined;
+        const baseScore = effectiveScore ?? searchScore ?? Math.pow(positionDecay, idx);
+        const score = layerWeight * baseScore;
         allMemories.push({ memory, score });
       });
     }
@@ -1098,6 +1142,36 @@ export class TitanMemory {
       stats,
       layers,
     };
+  }
+
+  // ==================== Phase 4: Compression ====================
+
+  /**
+   * Compress a memory by ID into a structured compressed representation
+   * Uses SimpleMem-style entity extraction, relationship distilling,
+   * and extractive summarization.
+   */
+  async compress(
+    memoryId: string,
+    options?: import('./compression/types.js').CompressionOptions
+  ): Promise<import('./compression/types.js').CompressedMemory> {
+    const memory = await this.get(memoryId);
+    if (!memory) {
+      throw new Error(`Memory not found: ${memoryId}`);
+    }
+    const { compressMemory } = await import('./compression/compressor.js');
+    return compressMemory(memory.content, options);
+  }
+
+  /**
+   * Expand a compressed memory back into readable text
+   */
+  async expand(
+    compressed: import('./compression/types.js').CompressedMemory,
+    options?: import('./compression/types.js').ExpansionOptions
+  ): Promise<import('./compression/types.js').ExpandedMemory> {
+    const { expandMemory } = await import('./compression/expander.js');
+    return expandMemory(compressed, options);
   }
 
   /**

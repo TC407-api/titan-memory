@@ -344,9 +344,12 @@ export class AdaptiveMemory {
     const accessCount = this.getAccessCount(memory.id);
     const frequency = Math.min(1, Math.log10(accessCount + 1) / 2);
 
-    // Relevance: based on current context similarity
+    // Relevance: use retrieval pipeline's effectiveScore when available (includes
+    // reranker + recency tiebreak), fall back to n-gram context similarity
     let relevance = 0.5;
-    if (currentContext) {
+    if (memory.metadata?.effectiveScore != null) {
+      relevance = memory.metadata.effectiveScore as number;
+    } else if (currentContext) {
       relevance = this.calculateContextRelevance(memory.content, currentContext);
     }
 

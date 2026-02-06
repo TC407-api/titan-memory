@@ -4,6 +4,7 @@
  */
 
 export { VoyageEmbeddingGenerator, type VoyageEmbeddingConfig } from './voyage-embedding.js';
+export { VoyageReranker, type VoyageRerankerConfig, type RerankResult } from './voyage-reranker.js';
 export { LocalEmbeddingGenerator, type LocalEmbeddingConfig } from './local-embedding.js';
 export { CachedEmbeddingGenerator, type CacheConfig } from './cached-embedding.js';
 

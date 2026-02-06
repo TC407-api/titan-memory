@@ -155,8 +155,8 @@ Edit this file to add or remove curated memories.
     return date.toISOString().split('T')[0]; // YYYY-MM-DD
   }
 
-  async store(entry: Omit<MemoryEntry, 'id' | 'layer'>): Promise<MemoryEntry> {
-    const id = uuidv4();
+  async store(entry: Omit<MemoryEntry, 'id' | 'layer'> & { id?: string }): Promise<MemoryEntry> {
+    const id = entry.id || uuidv4();
     const date = this.getDateString(entry.timestamp);
 
     // Get or create today's log

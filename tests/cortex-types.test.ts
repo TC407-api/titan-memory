@@ -3,25 +3,25 @@
  */
 
 import {
-  DEFAULT_CATBRAIN_CONFIG,
+  DEFAULT_CORTEX_CONFIG,
   CATEGORY_LAYER_MAP,
 } from '../src/cortex/types';
 import { MemoryLayer } from '../src/types';
 
 describe('Cortex Types', () => {
-  describe('DEFAULT_CATBRAIN_CONFIG', () => {
+  describe('DEFAULT_CORTEX_CONFIG', () => {
     it('should have all required fields', () => {
-      expect(DEFAULT_CATBRAIN_CONFIG).toHaveProperty('enabled', false);
-      expect(DEFAULT_CATBRAIN_CONFIG).toHaveProperty('retrieveCount', 50);
-      expect(DEFAULT_CATBRAIN_CONFIG).toHaveProperty('highlightThreshold', 0.8);
-      expect(DEFAULT_CATBRAIN_CONFIG).toHaveProperty('classifierConfidenceThreshold', 0.6);
-      expect(DEFAULT_CATBRAIN_CONFIG).toHaveProperty('enableGuardrails', false);
-      expect(DEFAULT_CATBRAIN_CONFIG).toHaveProperty('enableDriftMonitor', false);
-      expect(DEFAULT_CATBRAIN_CONFIG).toHaveProperty('enableProjectHooks', false);
+      expect(DEFAULT_CORTEX_CONFIG).toHaveProperty('enabled', false);
+      expect(DEFAULT_CORTEX_CONFIG).toHaveProperty('retrieveCount', 50);
+      expect(DEFAULT_CORTEX_CONFIG).toHaveProperty('highlightThreshold', 0.8);
+      expect(DEFAULT_CORTEX_CONFIG).toHaveProperty('classifierConfidenceThreshold', 0.6);
+      expect(DEFAULT_CORTEX_CONFIG).toHaveProperty('enableGuardrails', false);
+      expect(DEFAULT_CORTEX_CONFIG).toHaveProperty('enableDriftMonitor', false);
+      expect(DEFAULT_CORTEX_CONFIG).toHaveProperty('enableProjectHooks', false);
     });
 
     it('should be disabled by default', () => {
-      expect(DEFAULT_CATBRAIN_CONFIG.enabled).toBe(false);
+      expect(DEFAULT_CORTEX_CONFIG.enabled).toBe(false);
     });
   });
 

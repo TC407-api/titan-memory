@@ -96,7 +96,7 @@ export class FactualMemoryLayer extends BaseMemoryLayer {
     this.dirty = false;
   }
 
-  async store(entry: Omit<MemoryEntry, 'id' | 'layer'>): Promise<MemoryEntry> {
+  async store(entry: Omit<MemoryEntry, 'id' | 'layer'> & { id?: string }): Promise<MemoryEntry> {
     const contentHash = createContentHash(entry.content);
 
     // Check for duplicate content
@@ -106,7 +106,7 @@ export class FactualMemoryLayer extends BaseMemoryLayer {
       if (existing) return existing;
     }
 
-    const id = uuidv4();
+    const id = entry.id || uuidv4();
     const timestamp = entry.timestamp.toISOString();
 
     const factEntry: FactEntry = {

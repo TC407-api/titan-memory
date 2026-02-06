@@ -30,7 +30,7 @@ export abstract class BaseMemoryLayer {
   /**
    * Store a memory entry
    */
-  abstract store(entry: Omit<MemoryEntry, 'id' | 'layer'>): Promise<MemoryEntry>;
+  abstract store(entry: Omit<MemoryEntry, 'id' | 'layer'> & { id?: string }): Promise<MemoryEntry>;
 
   /**
    * Query memories
