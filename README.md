@@ -476,11 +476,21 @@ graph LR
 
 ## Installation
 
-### Quick Start
+### Claude Code Plugin (Recommended)
+
+```bash
+claude plugin install titan-memory
+```
+
+One command. Installs the MCP server, context injection, and setup/status skills.
+
+Then run `/titan-memory:setup` to configure your environment variables.
+
+### Manual Install
 
 ```bash
 # Clone the repository
-git clone https://github.com/TC407-api/titan-memory.git ~/.claude/titan-memory
+git clone https://github.com/TC407-api/Titan-Memory.git ~/.claude/titan-memory
 
 # Install and build
 cd ~/.claude/titan-memory
